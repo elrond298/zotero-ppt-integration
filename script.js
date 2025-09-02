@@ -110,14 +110,15 @@ function formatSingleCitation(item) {
 // --- Core PowerPoint Interaction Functions ---
 
 /**
- * Inserts citations as a hyperlinked text box, stores citation keys in the slide's custom tags,
- * and then updates the UI to show all keys for the slide.
+ * Inserts citations into the presentation. If the cursor is in a text box,
+ * it inserts the text there. Otherwise, it creates a new text box for the citation.
+ * It also stores citation keys in the slide's custom tags and updates the UI.
  * @param {Array} zoteroItems An array of Zotero item objects from the API.
  */
 async function insertCitationsIntoPowerPoint(zoteroItems) {
   try {
     await PowerPoint.run(async (context) => {
-      // Get the currently selected slide.
+      // Get the currently selected slide. This is needed for both scenarios.
       const slides = context.presentation.getSelectedSlides();
       slides.load("items");
       await context.sync();
@@ -165,11 +166,37 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
       const citationParts = zoteroItems.map(item => formatSingleCitation(item));
       const citationsText = `(${citationParts.join('; ')})`;
 
-      const leftPosition = 100;
-      const topPosition = 150;
-      const textBox = slide.shapes.addTextBox(citationsText, { left: leftPosition, top: topPosition, width: 400, height: 50 });
-      textBox.load("textFrame/textRange");
-      await context.sync();
+      // --- 3. Insert the Citation Text into the Slide ---
+      try {
+        // SCENARIO 1: Try to insert text at the current cursor position.
+        // This will succeed if the cursor is in a text box.
+        const selectedTextRange = context.presentation.getSelectedTextRange();
+        selectedTextRange.load("text"); // We must load a property to validate the object.
+        await context.sync();
+
+        // Insert the text. 'Replace' is ideal: it inserts at the cursor if nothing
+        // is selected, or replaces the currently highlighted text.
+        const originalText = selectedTextRange.text;
+        selectedTextRange.text = originalText + ' ' + citationsText;
+        await context.sync();
+
+      } catch (error) {
+        // SCENARIO 2: The cursor is not in a text box.
+        // Check if the error is the specific one we expect for no text selection.
+        if (error.name === 'RichApi.Error' && error.code === 'GeneralException') {
+          // Fallback: Create a new text box on the slide.
+          console.log("No text range selected. Creating a new text box.");
+          const leftPosition = 100;
+          const topPosition = 150;
+          const textBox = slide.shapes.addTextBox(citationsText, { left: leftPosition, top: topPosition, width: 400, height: 50 });
+          textBox.load("textFrame/textRange"); // Good practice to load the new object.
+          await context.sync();
+        } else {
+          // For any other unexpected error, re-throw it to be caught by the outer handler.
+          console.error("An unexpected error occurred during text insertion:", error);
+          throw error;
+        }
+      }
     });
 
     // --- 4. Update the UI to reflect the changes ---
@@ -181,6 +208,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
     document.getElementById("output").textContent = "Error: Could not insert citations.";
   }
 }
+
 
 /**
  * Removes a specific Zotero citation key from the currently selected slide's custom tags.
