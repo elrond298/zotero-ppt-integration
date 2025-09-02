@@ -1,0 +1,50 @@
+section.samples {
+    margin-top: 20px;
+}
+
+section.samples .ms-Button, section.setup .ms-Button {
+    display: block;
+    margin-bottom: 5px;
+    margin-left: 20px;
+    min-width: 80px;
+}
+
+#output p {
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+#output ul {
+    list-style-type: none;
+    padding-left: 0;
+    margin-top: 5px;
+}
+
+#output li {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+    font-family: Consolas, monaco, monospace;
+    font-size: 14px;
+}
+
+.remove-btn {
+    background-color: #f44336; /* Red */
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    font-size: 14px;
+    line-height: 20px;
+    text-align: center;
+    margin-right: 8px;
+    padding: 0;
+    font-weight: bold;
+    flex-shrink: 0; /* Prevents the button from shrinking */
+}
+
+.remove-btn:hover {
+    background-color: #d32f2f; /* Darker red */
+}

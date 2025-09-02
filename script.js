@@ -7,7 +7,10 @@ const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS"; // Key for storing citation data 
 Office.onReady((info) => {
   if (info.host === Office.HostType.PowerPoint) {
     // Wire up the 'Run' button event listener
-    document.getElementById("run").addEventListener("click", run);
+    document.getElementById("add-citation").addEventListener("click", handleAddCitation);
+
+    // Add a click listener to the output area for handling tag removal (event delegation)
+    document.getElementById("output").addEventListener("click", handleRemoveClick);
 
     // Add an event handler for when the slide selection changes.
     // This will keep the displayed citation list in sync with the selected slide.
@@ -32,7 +35,7 @@ Office.onReady((info) => {
 /**
  * Fetches citation data from the Zotero proxy and triggers the insertion process.
  */
-async function run() {
+async function handleAddCitation() {
   var xhr = new XMLHttpRequest();
   xhr.open("GET", PROXY_ENDPOINT, true);
   xhr.onreadystatechange = function () {
@@ -60,6 +63,21 @@ async function run() {
     document.getElementById("output").textContent = "Error: Request to Zotero proxy failed. Is it running?";
   };
   xhr.send();
+}
+
+/**
+ * Handles clicks within the output area to delegate removal actions.
+ * @param {Event} event The click event.
+ */
+function handleRemoveClick(event) {
+  // Find the closest ancestor that is a remove button
+  const removeButton = event.target.closest(".remove-btn");
+  if (removeButton) {
+    const keyToRemove = removeButton.dataset.key;
+    if (keyToRemove) {
+      removeCitation(keyToRemove);
+    }
+  }
 }
 
 // --- Helper Functions ---
@@ -165,16 +183,60 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
 }
 
 /**
+ * Removes a specific Zotero citation key from the currently selected slide's custom tags.
+ * @param {string} keyToRemove The citation key to be removed.
+ */
+async function removeCitation(keyToRemove) {
+  try {
+    await PowerPoint.run(async (context) => {
+      const slide = context.presentation.getSelectedSlides().getItemAt(0);
+      const customTags = slide.tags;
+      customTags.load("key, value");
+      await context.sync();
+
+      const zoteroTag = customTags.items.find(tag => tag.key === ZOTERO_TAG_KEY);
+
+      if (zoteroTag) {
+        let currentKeys = [];
+        try {
+          currentKeys = JSON.parse(zoteroTag.value);
+        } catch (e) {
+          console.error("Could not parse existing tags for removal:", e);
+          return; // Exit if tags are corrupt
+        }
+
+        // Filter out the key to be removed
+        const updatedKeys = currentKeys.filter(key => key !== keyToRemove);
+
+        // Update the tag with the new array
+        slide.tags.add(ZOTERO_TAG_KEY, JSON.stringify(updatedKeys));
+        await context.sync();
+      }
+    });
+
+    // Refresh the UI to show the change
+    await displayCitationsFromSlide();
+
+  } catch (error) {
+    console.error("Error removing citation:", error);
+    document.getElementById("output").textContent = "Error: Could not remove citation.";
+  }
+}
+
+/**
  * Reads the Zotero citation keys from the currently selected slide's custom tags
- * and displays them in the add-in's UI.
+ * and displays them as an interactive list in the add-in's UI.
  */
 async function displayCitationsFromSlide() {
+  const outputElement = document.getElementById("output");
+  // Clear previous content
+  outputElement.innerHTML = "";
+
   try {
     await PowerPoint.run(async (context) => {
       const slide = context.presentation.getSelectedSlides().getItemAt(0);
       if (!slide) {
-        // This can happen if no slides exist or none are selected.
-        document.getElementById("output").textContent = "Select a slide to view its citations.";
+        outputElement.textContent = "Select a slide to view its citations.";
         return;
       }
 
@@ -183,13 +245,39 @@ async function displayCitationsFromSlide() {
       await context.sync();
 
       const zoteroTag = customTags.items.find(tag => tag.key === ZOTERO_TAG_KEY);
-      const outputElement = document.getElementById("output");
 
       if (zoteroTag) {
         try {
           const keysArray = JSON.parse(zoteroTag.value);
           if (Array.isArray(keysArray) && keysArray.length > 0) {
-            outputElement.textContent = `Citations on this slide:\n${keysArray.join('\n')}`;
+            // Create a header and a list
+            const header = document.createElement("p");
+            header.textContent = "Citations on this slide:";
+            const list = document.createElement("ul");
+
+            keysArray.forEach(key => {
+              const listItem = document.createElement("li");
+
+              // Create the remove button
+              const removeButton = document.createElement("button");
+              removeButton.className = "remove-btn";
+              removeButton.innerHTML = "&times;"; // 'x' symbol
+              removeButton.title = `Remove citation: ${key}`;
+              removeButton.dataset.key = key; // Store the key in a data attribute
+
+              // Create the text span
+              const keyText = document.createElement("span");
+              keyText.textContent = key;
+
+              // Assemble the list item
+              listItem.appendChild(removeButton);
+              listItem.appendChild(keyText);
+              list.appendChild(listItem);
+            });
+
+            outputElement.appendChild(header);
+            outputElement.appendChild(list);
+
           } else {
             outputElement.textContent = "No Zotero citations found on this slide.";
           }
@@ -204,5 +292,8 @@ async function displayCitationsFromSlide() {
   } catch (error) {
     console.error("Error displaying citations from slide:", error);
     // Avoid overwriting an important message if this fails in the background.
+    if (outputElement.innerHTML === "") {
+        outputElement.textContent = "Could not load citations for this slide.";
+    }
   }
 }
