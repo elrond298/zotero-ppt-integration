@@ -1,13 +1,15 @@
 // --- Configuration ---
 const PROXY_ENDPOINT = "http://localhost:8000/zotero";
+const BIB_ENDPOINT = "http://localhost:8000/bibliography";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS"; // Key for storing citation data in slide's custom properties
 
 // --- Office.onReady Initialization ---
 // This function is called when the Office host is ready.
 Office.onReady((info) => {
   if (info.host === Office.HostType.PowerPoint) {
-    // Wire up the 'Run' button event listener
+    // Wire up the button event listeners
     document.getElementById("add-citation").addEventListener("click", handleAddCitation);
+    document.getElementById("generate-bibliography").addEventListener("click", handleGenerateBibliography);
 
     // Add a click listener to the output area for handling tag removal (event delegation)
     document.getElementById("output").addEventListener("click", handleRemoveClick);
@@ -80,6 +82,69 @@ function handleRemoveClick(event) {
   }
 }
 
+/**
+ * Gathers all unique citation keys from the presentation, sends them to the
+ * server for formatting, and adds the resulting bibliography to a new slide.
+ */
+async function handleGenerateBibliography() {
+  const outputElement = document.getElementById("output");
+  outputElement.textContent = "Generating bibliography...";
+
+  try {
+    // Use a Set to automatically handle duplicates
+    const allCitationKeys = new Set();
+
+    // 1. Loop over all slides and collect citation keys
+    await PowerPoint.run(async (context) => {
+      const slides = context.presentation.slides;
+      slides.load("items");
+      await context.sync();
+
+      // This is more efficient than syncing inside the loop.
+      // First, request to load the tags for all slides.
+      for (const slide of slides.items) {
+        slide.tags.load("key, value");
+      }
+      await context.sync();
+
+      // Now that all tags are loaded, process them
+      for (const slide of slides.items) {
+        const zoteroTag = slide.tags.items.find(tag => tag.key === ZOTERO_TAG_KEY);
+        if (zoteroTag) {
+          try {
+            const keysArray = JSON.parse(zoteroTag.value);
+            if (Array.isArray(keysArray)) {
+              keysArray.forEach(key => allCitationKeys.add(key));
+            }
+          } catch (e) {
+            console.warn(`Could not parse citation keys on a slide`, e);
+          }
+        }
+      }
+    });
+
+    const uniqueKeys = Array.from(allCitationKeys);
+    console.log("Found unique citation keys:", uniqueKeys);
+
+    if (uniqueKeys.length === 0) {
+      outputElement.textContent = "No citations found in the presentation.";
+      return;
+    }
+
+    // 2. Send keys to the server to get the formatted bibliography
+    const formattedBibliography = await fetchBibliographyFromServer(uniqueKeys);
+
+    // 3. Add the bibliography to a new slide
+    await addBibliographySlide(formattedBibliography);
+
+    outputElement.textContent = "Bibliography generated successfully!";
+
+  } catch (error) {
+    console.error("Error generating bibliography:", error);
+    outputElement.textContent = "Error: Could not generate bibliography.";
+  }
+}
+
 // --- Helper Functions ---
 
 /**
@@ -106,6 +171,29 @@ function formatSingleCitation(item) {
   return `${authorString}, ${year}`;
 }
 
+/**
+ * Sends citation keys to the server and returns the formatted bibliography string.
+ * @param {string[]} keys - An array of unique citation keys.
+ * @returns {Promise<string>} A promise that resolves to the formatted bibliography text.
+ */
+async function fetchBibliographyFromServer(keys) {
+  const response = await fetch(BIB_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    // You can configure the style here, e.g., 'apalike', 'unsrt', 'plain'
+    body: JSON.stringify({ keys: keys, style: 'apalike' })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Server responded with status: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.bibliography;
+}
 
 // --- Core PowerPoint Interaction Functions ---
 
@@ -321,7 +409,55 @@ async function displayCitationsFromSlide() {
     console.error("Error displaying citations from slide:", error);
     // Avoid overwriting an important message if this fails in the background.
     if (outputElement.innerHTML === "") {
-        outputElement.textContent = "Could not load citations for this slide.";
+      outputElement.textContent = "Could not load citations for this slide.";
     }
   }
 }
+
+/**
+ * Adds a new bibliography slide to the end of the presentation.
+ * @param bibliographyText The string content for the bibliography.
+ */
+async function addBibliographySlide(bibliographyText) {
+  await PowerPoint.run(async function (context) {
+    context.presentation.slides.add();
+    await context.sync();
+
+    // The index for the new slide will be the current number of slides.
+    const newSlideIndex = context.presentation.slides.getCount();
+    await context.sync();
+
+    // Get the newly added slide by its index.
+    context.presentation.load("slides");
+    await context.sync();
+    const newSlide = context.presentation.slides.getItemAt(newSlideIndex.value-1);
+    newSlide.load("id");
+    await context.sync();
+    // No need to load 'id' here unless you specifically need it later.
+    // Operations on the slide object will work without loading a property first.
+
+    // Add a title
+    const titleShape = newSlide.shapes.addTextBox("References", {
+      left: 50,
+      top: 50,
+      width: 860,
+      height: 100
+    });
+    titleShape.textFrame.textRange.font.size = 44;
+
+    // Add the bibliography content
+    const contentShape = newSlide.shapes.addTextBox(bibliographyText, {
+      left: 50,
+      top: 150,
+      width: 860,
+      height: 350
+    });
+    contentShape.textFrame.textRange.font.size = 14;
+    // Allow the text box to resize vertically to fit all the content
+    contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+
+    // Sync all the queued changes (add slide, add text boxes, format text).
+    await context.sync();
+  });
+}
+
