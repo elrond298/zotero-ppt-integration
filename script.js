@@ -259,7 +259,7 @@ async function fetchBibliographyFromServer(keys) {
       'Content-Type': 'application/json',
     },
     // You can configure the style here, e.g., 'apalike', 'unsrt', 'plain'
-    body: JSON.stringify({ keys: keys, style: 'apalike' })
+    body: JSON.stringify({ keys: keys, style: 'journal-of-geophysical-research-atmospheres' })
   });
 
   if (!response.ok) {
@@ -496,7 +496,16 @@ async function displayCitationsFromSlide() {
  */
 async function addBibliographySlide(bibliographyText) {
   await PowerPoint.run(async function (context) {
-    context.presentation.slides.add();
+    // Load information about all the slide masters and associated layouts.
+    const slideMasters = context.presentation.slideMasters.load("id, name, layouts/items/name, layouts/items/id");
+    await context.sync();
+    console.log("loaded master")
+    const newSlideOptions = {
+      slideMasterId: slideMasters.items[0].id,
+      layoutId: slideMasters.items[0].layouts.items[6].id /* 1 for title content, 6 for empty */
+    };
+    console.log(newSlideOptions)
+    context.presentation.slides.add(newSlideOptions);
     await context.sync();
 
     // The index for the new slide will be the current number of slides.
