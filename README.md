@@ -183,3 +183,9 @@ The add-in provides a simple way to see and manage the citations associated with
 *  **Bibliography is generated based on metadata alone**, delete citations manually if necessary.
 
 This ensures that your final bibliography is always accurate and reflects only the citations present in your presentation.
+
+## 7. Useful links
+https://retorque.re/zotero-better-bibtex/citing/cayw
+https://retorque.re/zotero-better-bibtex/exporting/json-rpc/index.html
+https://www.zotero.org/support/dev/web_api/v3/basics
+https://learn.microsoft.com/en-us/javascript/api/powerpoint
