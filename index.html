@@ -1,11 +1,21 @@
-<button id="add-citation" class="ms-Button">
-		<span class="ms-Button-label">Add Citation (Pop up)</span>
-</button>
-<button id="add-citation-selected" class="ms-Button">
-		<span class="ms-Button-label">Add Citation (Selected)</span>
-</button>
-<button id="generate-bibliography" class="ms-Button">
-    <span class="ms-Button-label">Generate Bibliography</span>
-</button>
-<!-- Changed from <pre> to <div> to hold interactive list -->
-<div id="output"></div>
+<div class="container">
+    <h2>Zotero Citation Manager</h2>
+    
+    <div class="button-group">
+        <button id="add-citation" class="ms-Button primary">
+            <span class="ms-Button-label">Add Citation (Pop up)</span>
+        </button>
+        <button id="add-citation-selected" class="ms-Button secondary">
+            <span class="ms-Button-label">Add Citation (Selected)</span>
+        </button>
+        <button id="generate-bibliography" class="ms-Button accent">
+            <span class="ms-Button-label">Generate Bibliography</span>
+        </button>
+    </div>
+    
+    <div class="output-section">
+        <h3>Slide Citations</h3>
+        <!-- Changed from <pre> to <div> to hold interactive list -->
+        <div id="output" class="output-content"></div>
+    </div>
+</div>

@@ -1,50 +1,165 @@
-section.samples {
-    margin-top: 20px;
+/* Container styling */
+.container {
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 15px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-section.samples .ms-Button, section.setup .ms-Button {
+.container h2 {
+    color: #2b579a;
+    margin-bottom: 20px;
+    font-size: 1.4em;
+    text-align: center;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+}
+
+/* Button group styling */
+.button-group {
+    margin-bottom: 25px;
+}
+
+/* Button styling */
+.ms-Button {
     display: block;
-    margin-bottom: 5px;
-    margin-left: 20px;
-    min-width: 80px;
+    width: 100%;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
 }
 
-#output p {
-    margin-bottom: 5px;
-    font-weight: bold;
+.ms-Button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
-#output ul {
-    list-style-type: none;
-    padding-left: 0;
-    margin-top: 5px;
+.ms-Button.primary {
+    background-color: #0078d42d;
+    color: white;
 }
 
-#output li {
+.ms-Button.primary:hover {
+    background-color: #106dbe42;
+}
+
+.ms-Button.secondary {
+    background-color: #2b579a30;
+    color: white;
+}
+
+.ms-Button.secondary:hover {
+    background-color: #1e3b722d;
+}
+
+.ms-Button.accent {
+    background-color: #107c1029;
+    color: white;
+}
+
+.ms-Button.accent:hover {
+    background-color: #095a091e;
+}
+
+.ms-Button-label {
     display: flex;
     align-items: center;
-    margin-bottom: 4px;
-    font-family: Consolas, monaco, monospace;
-    font-size: 14px;
 }
 
+.ms-Button-label::before {
+    content: "";
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 10px;
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.ms-Button.primary .ms-Button-label::before {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>');
+}
+
+.ms-Button.secondary .ms-Button-label::before {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>');
+}
+
+.ms-Button.accent .ms-Button-label::before {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>');
+}
+
+/* Output section styling */
+.output-section {
+    border-top: 1px solid #eee;
+    padding-top: 15px;
+}
+
+.output-section h3 {
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+.output-content {
+    min-height: 60px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    padding: 12px;
+    border: 1px solid #eee;
+}
+
+.output-content p {
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #2b579a;
+}
+
+.output-content ul {
+    list-style-type: none;
+    padding-left: 0;
+    margin-top: 8px;
+}
+
+.output-content li {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 13px;
+    background-color: white;
+    padding: 8px 10px;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* Remove button styling */
 .remove-btn {
     background-color: #f44336; /* Red */
     color: white;
     border: none;
     border-radius: 50%;
     cursor: pointer;
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     font-size: 14px;
-    line-height: 20px;
+    line-height: 22px;
     text-align: center;
-    margin-right: 8px;
+    margin-right: 10px;
     padding: 0;
     font-weight: bold;
     flex-shrink: 0; /* Prevents the button from shrinking */
+    transition: background-color 0.3s ease;
 }
 
 .remove-btn:hover {
     background-color: #d32f2f; /* Darker red */
+    transform: scale(1.1);
 }
+
