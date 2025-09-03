@@ -1,8 +1,4 @@
-Of course. Here is a comprehensive README file based on the provided code and requirements.
-
----
-
-# PowerPoint Zotero Citation Add-in
+# PowerPoint Zotero Integration Add-in
 
 This project provides a simple [Script Lab](https://aka.ms/scriptlab)-based add-in for Microsoft PowerPoint. It allows you to connect to your running Zotero instance to insert in-text citations and generate a complete bibliography on a new slide.
 
