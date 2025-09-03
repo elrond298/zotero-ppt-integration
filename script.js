@@ -502,9 +502,8 @@ async function addBibliographySlide(bibliographyText) {
     console.log("loaded master")
     const newSlideOptions = {
       slideMasterId: slideMasters.items[0].id,
-      layoutId: slideMasters.items[0].layouts.items[6].id /* 1 for title content, 6 for empty */
+      layoutId: slideMasters.items[0].layouts.items[1].id /* 1 for title content, 6 for empty */
     };
-    console.log(newSlideOptions)
     context.presentation.slides.add(newSlideOptions);
     await context.sync();
 
@@ -521,26 +520,45 @@ async function addBibliographySlide(bibliographyText) {
     // No need to load 'id' here unless you specifically need it later.
     // Operations on the slide object will work without loading a property first.
 
-    // Add a title
-    const titleShape = newSlide.shapes.addTextBox("References", {
-      left: 50,
-      top: 50,
-      width: 860,
-      height: 100
-    });
-    titleShape.textFrame.textRange.font.size = 44;
+    try {
+      // We need to load the 'placeholder' property to check its type.
+      newSlide.shapes.load("placeholder/type");
+      await context.sync();
 
-    // Add the bibliography content
-    const contentShape = newSlide.shapes.addTextBox(bibliographyText, {
-      left: 50,
-      top: 150,
-      width: 860,
-      height: 350
-    });
-    contentShape.textFrame.textRange.font.size = 14;
-    // Allow the text box to resize vertically to fit all the content
-    contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+      // Set text in title placeholder
+      const titleShape = newSlide.shapes.items[0]
+      titleShape.textFrame.textRange.text = "References";
+      titleShape.textFrame.textRange.font.size = 44;
 
+      // Set text in body placeholder
+      const contentShape = newSlide.shapes.items[1]
+      contentShape.textFrame.textRange.text = bibliographyText;
+      contentShape.textFrame.textRange.font.size = 14;
+      // Allow the text box to resize vertically to fit all the content
+      contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+    }
+    catch (error) {
+      logError("Error setting content:", error)
+      // Add a title
+      const titleShape = newSlide.shapes.addTextBox("References", {
+        left: 50,
+        top: 50,
+        width: 860,
+        height: 100
+      });
+      titleShape.textFrame.textRange.font.size = 44;
+
+      // Add the bibliography content
+      const contentShape = newSlide.shapes.addTextBox(bibliographyText, {
+        left: 50,
+        top: 150,
+        width: 860,
+        height: 350
+      });
+      contentShape.textFrame.textRange.font.size = 14;
+      // Allow the text box to resize vertically to fit all the content
+      contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+    }
     // Sync all the queued changes (add slide, add text boxes, format text).
     await context.sync();
   });
