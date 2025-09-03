@@ -3,6 +3,48 @@ const PROXY_ENDPOINT = "http://localhost:8000/zotero";
 const BIB_ENDPOINT = "http://localhost:8000/bibliography";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS"; // Key for storing citation data in slide's custom properties
 
+// Log levels
+const LOG_LEVELS = {
+  NONE: 0,
+  ERROR: 1,
+  WARN: 2,
+  INFO: 3,
+  DEBUG: 4
+};
+
+// Global log level parameter to control logging verbosity, defaulting to WARN
+const LOG_LEVEL = LOG_LEVELS.WARN;
+
+// Custom logging functions that respect the log level setting
+function logDebug(...args) {
+  if (LOG_LEVEL >= LOG_LEVELS.DEBUG) {
+    console.log("[DEBUG]", ...args);
+  }
+}
+
+function logInfo(...args) {
+  if (LOG_LEVEL >= LOG_LEVELS.INFO) {
+    console.log("[INFO]", ...args);
+  }
+}
+
+function logWarn(...args) {
+  if (LOG_LEVEL >= LOG_LEVELS.WARN) {
+    console.warn("[WARN]", ...args);
+  }
+}
+
+function logError(...args) {
+  if (LOG_LEVEL >= LOG_LEVELS.ERROR) {
+    console.error("[ERROR]", ...args);
+  }
+}
+
+// For backward compatibility, keep the original log function as an alias to logInfo
+function log(...args) {
+  logInfo(...args);
+}
+
 // --- Office.onReady Initialization ---
 // This function is called when the Office host is ready.
 Office.onReady((info) => {
@@ -22,7 +64,7 @@ Office.onReady((info) => {
       displayCitationsFromSlide,
       (asyncResult) => {
         if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-          console.error("Could not register selection change handler: " + asyncResult.error.message);
+          logError("Could not register selection change handler: " + asyncResult.error.message);
         }
       }
     );
@@ -46,23 +88,23 @@ async function handleAddCitation() {
       if (xhr.status === 200) {
         try {
           var response = JSON.parse(xhr.responseText);
-          console.log("Zotero response:", response);
+          log("Zotero response:", response);
 
           // Call the function to insert citations into PowerPoint
           insertCitationsIntoPowerPoint(response);
 
         } catch (e) {
-          console.error("Error parsing JSON response:", e);
+          logError("Error parsing JSON response:", e);
           document.getElementById("output").textContent = "Error: Could not parse Zotero data.";
         }
       } else {
-        console.error("Request failed with status:", xhr.status);
+        logError("Request failed with status:", xhr.status);
         document.getElementById("output").textContent = `Error: Could not connect to Zotero (Status: ${xhr.status}).`;
       }
     }
   };
   xhr.onerror = function () {
-    console.error("Request failed");
+    logError("Request failed");
     document.getElementById("output").textContent = "Error: Request to Zotero proxy failed. Is it running?";
   };
   xhr.send();
@@ -79,23 +121,23 @@ async function handleAddCitationSelected() {
       if (xhr.status === 200) {
         try {
           var response = JSON.parse(xhr.responseText);
-          console.log("Zotero response (selected):", response);
+          log("Zotero response (selected):", response);
 
           // Call the function to insert citations into PowerPoint
           insertCitationsIntoPowerPoint(response);
 
         } catch (e) {
-          console.error("Error parsing JSON response:", e);
+          logError("Error parsing JSON response:", e);
           document.getElementById("output").textContent = "Error: Could not parse Zotero data.";
         }
       } else {
-        console.error("Request failed with status:", xhr.status);
+        logError("Request failed with status:", xhr.status);
         document.getElementById("output").textContent = `Error: Could not connect to Zotero (Status: ${xhr.status}).`;
       }
     }
   };
   xhr.onerror = function () {
-    console.error("Request failed");
+    logError("Request failed");
     document.getElementById("output").textContent = "Error: Request to Zotero proxy failed. Is it running?";
   };
   xhr.send();
@@ -151,14 +193,14 @@ async function handleGenerateBibliography() {
               keysArray.forEach(key => allCitationKeys.add(key));
             }
           } catch (e) {
-            console.warn(`Could not parse citation keys on a slide`, e);
+            logWarn(`Could not parse citation keys on a slide`, e);
           }
         }
       }
     });
 
     const uniqueKeys = Array.from(allCitationKeys);
-    console.log("Found unique citation keys:", uniqueKeys);
+    log("Found unique citation keys:", uniqueKeys);
 
     if (uniqueKeys.length === 0) {
       outputElement.textContent = "No citations found in the presentation.";
@@ -174,7 +216,7 @@ async function handleGenerateBibliography() {
     outputElement.textContent = "Bibliography generated successfully!";
 
   } catch (error) {
-    console.error("Error generating bibliography:", error);
+    logError("Error generating bibliography:", error);
     outputElement.textContent = "Error: Could not generate bibliography.";
   }
 }
@@ -246,7 +288,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
       await context.sync();
 
       if (slides.items.length === 0) {
-        console.error("No slide selected.");
+        logError("No slide selected.");
         document.getElementById("output").textContent = "Please select a slide first.";
         return;
       }
@@ -254,7 +296,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
 
       // Check if the response is a valid array
       if (!Array.isArray(zoteroItems) || zoteroItems.length === 0) {
-        console.log("No valid citation items found in the response.");
+        log("No valid citation items found in the response.");
         document.getElementById("output").textContent = "No citations found to insert.";
         return;
       }
@@ -274,7 +316,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
             keysArray.forEach(key => citationKeys.add(key));
           }
         } catch (e) {
-          console.error("Could not parse existing citation tags:", e);
+          logError("Could not parse existing citation tags:", e);
         }
       }
       // Add new keys from the current insertion
@@ -307,7 +349,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
         // Check if the error is the specific one we expect for no text selection.
         if (error.name === 'RichApi.Error' && error.code === 'GeneralException') {
           // Fallback: Create a new text box on the slide.
-          console.log("No text range selected. Creating a new text box.");
+          log("No text range selected. Creating a new text box.");
           const leftPosition = 100;
           const topPosition = 150;
           const textBox = slide.shapes.addTextBox(citationsText, { left: leftPosition, top: topPosition, width: 400, height: 50 });
@@ -315,7 +357,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
           await context.sync();
         } else {
           // For any other unexpected error, re-throw it to be caught by the outer handler.
-          console.error("An unexpected error occurred during text insertion:", error);
+          logError("An unexpected error occurred during text insertion:", error);
           throw error;
         }
       }
@@ -326,7 +368,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
     await displayCitationsFromSlide();
 
   } catch (error) {
-    console.error("Error interacting with PowerPoint:", error);
+    logError("Error interacting with PowerPoint:", error);
     document.getElementById("output").textContent = "Error: Could not insert citations.";
   }
 }
@@ -351,7 +393,7 @@ async function removeCitation(keyToRemove) {
         try {
           currentKeys = JSON.parse(zoteroTag.value);
         } catch (e) {
-          console.error("Could not parse existing tags for removal:", e);
+          logError("Could not parse existing tags for removal:", e);
           return; // Exit if tags are corrupt
         }
 
@@ -368,7 +410,7 @@ async function removeCitation(keyToRemove) {
     await displayCitationsFromSlide();
 
   } catch (error) {
-    console.error("Error removing citation:", error);
+    logError("Error removing citation:", error);
     document.getElementById("output").textContent = "Error: Could not remove citation.";
   }
 }
@@ -432,7 +474,7 @@ async function displayCitationsFromSlide() {
             outputElement.textContent = "No Zotero citations found on this slide.";
           }
         } catch (e) {
-          console.error("Error parsing citation tags from slide:", e);
+          logError("Error parsing citation tags from slide:", e);
           outputElement.textContent = "Error reading citations from this slide.";
         }
       } else {
@@ -440,7 +482,7 @@ async function displayCitationsFromSlide() {
       }
     });
   } catch (error) {
-    console.error("Error displaying citations from slide:", error);
+    logError("Error displaying citations from slide:", error);
     // Avoid overwriting an important message if this fails in the background.
     if (outputElement.innerHTML === "") {
       outputElement.textContent = "Could not load citations for this slide.";
