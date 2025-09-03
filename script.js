@@ -499,13 +499,14 @@ async function addBibliographySlide(bibliographyText) {
     // Load information about all the slide masters and associated layouts.
     const slideMasters = context.presentation.slideMasters.load("id, name, layouts/items/name, layouts/items/id");
     await context.sync();
-    console.log("loaded master")
+    logInfo("loaded master")
     const newSlideOptions = {
       slideMasterId: slideMasters.items[0].id,
       layoutId: slideMasters.items[0].layouts.items[1].id /* 1 for title content, 6 for empty */
     };
     context.presentation.slides.add(newSlideOptions);
     await context.sync();
+    logInfo("inserted slide")
 
     // The index for the new slide will be the current number of slides.
     const newSlideIndex = context.presentation.slides.getCount();
