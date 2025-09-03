@@ -9,6 +9,7 @@ Office.onReady((info) => {
   if (info.host === Office.HostType.PowerPoint) {
     // Wire up the button event listeners
     document.getElementById("add-citation").addEventListener("click", handleAddCitation);
+    document.getElementById("add-citation-selected").addEventListener("click", handleAddCitationSelected);
     document.getElementById("generate-bibliography").addEventListener("click", handleGenerateBibliography);
 
     // Add a click listener to the output area for handling tag removal (event delegation)
@@ -46,6 +47,39 @@ async function handleAddCitation() {
         try {
           var response = JSON.parse(xhr.responseText);
           console.log("Zotero response:", response);
+
+          // Call the function to insert citations into PowerPoint
+          insertCitationsIntoPowerPoint(response);
+
+        } catch (e) {
+          console.error("Error parsing JSON response:", e);
+          document.getElementById("output").textContent = "Error: Could not parse Zotero data.";
+        }
+      } else {
+        console.error("Request failed with status:", xhr.status);
+        document.getElementById("output").textContent = `Error: Could not connect to Zotero (Status: ${xhr.status}).`;
+      }
+    }
+  };
+  xhr.onerror = function () {
+    console.error("Request failed");
+    document.getElementById("output").textContent = "Error: Request to Zotero proxy failed. Is it running?";
+  };
+  xhr.send();
+}
+
+/**
+ * Fetches citation data from the Zotero proxy with selected=true parameter and triggers the insertion process.
+ */
+async function handleAddCitationSelected() {
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", PROXY_ENDPOINT + "?selected=true", true);
+  xhr.onreadystatechange = function () {
+    if (xhr.readyState === 4) {
+      if (xhr.status === 200) {
+        try {
+          var response = JSON.parse(xhr.responseText);
+          console.log("Zotero response (selected):", response);
 
           // Call the function to insert citations into PowerPoint
           insertCitationsIntoPowerPoint(response);

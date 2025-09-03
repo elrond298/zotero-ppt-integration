@@ -20,9 +20,17 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        if self.path == '/zotero':
+        if self.path.startswith('/zotero'):
             try:
-                with urlopen(ZOTERO_CAYW_ENDPOINT) as response:
+                # Check if 'selected=true' parameter is present
+                selected = 'selected=true' in self.path
+                
+                # Build the endpoint URL
+                endpoint = ZOTERO_CAYW_ENDPOINT
+                if selected:
+                    endpoint += '&selected=true'
+                
+                with urlopen(endpoint) as response:
                     data = response.read()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
