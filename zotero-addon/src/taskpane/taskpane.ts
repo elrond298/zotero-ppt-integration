@@ -6,16 +6,25 @@ const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS"; // Key for storing citation data 
 // --- Office.onReady Initialization ---
 // This function is called when the Office host is ready.
 Office.onReady((info) => {
-  if (info.host === Office.HostType.PowerPoint) {
-    // Wire up the button event listeners
-    document.getElementById("add-citation").addEventListener("click", handleAddCitation);
-    document.getElementById("generate-bibliography").addEventListener("click", handleGenerateBibliography);
+  if (info.host !== Office.HostType.PowerPoint) {
+    console.warn("This add-in is built for PowerPoint. Current host:", info.host);
+    return;
+  }
 
-    // Add a click listener to the output area for handling tag removal (event delegation)
-    document.getElementById("output").addEventListener("click", handleRemoveClick);
+  const wireEvents = () => {
+    const addBtn = document.getElementById("add-citation");
+    const bibBtn = document.getElementById("generate-bibliography");
+    const output = document.getElementById("output");
 
-    // Add an event handler for when the slide selection changes.
-    // This will keep the displayed citation list in sync with the selected slide.
+    if (!addBtn || !bibBtn || !output) {
+      console.error("UI elements not found in the DOM. Check that scripts load after HTML body.");
+      return;
+    }
+
+    addBtn.addEventListener("click", handleAddCitation);
+    bibBtn.addEventListener("click", handleGenerateBibliography);
+    output.addEventListener("click", handleRemoveClick);
+
     Office.context.document.addHandlerAsync(
       Office.EventType.DocumentSelectionChanged,
       displayCitationsFromSlide,
@@ -26,10 +35,18 @@ Office.onReady((info) => {
       }
     );
 
-    // Perform an initial load of citations for the currently selected slide.
     displayCitationsFromSlide();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireEvents, { once: true });
+  } else {
+    wireEvents();
   }
 });
+
+// NOTE: Avoiding insecure mixed-content calls from an HTTPS add-in to HTTP localhost.
+// If you see network failures, ensure the proxy/bibliography service also uses HTTPS or enable it via dev certs.
 
 
 // --- Event Handlers ---
@@ -572,4 +589,3 @@ async function addBibliographySlide(bibliographyText) {
     await context.sync();
   });
 }
-
