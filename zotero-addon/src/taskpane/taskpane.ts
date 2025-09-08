@@ -1,6 +1,7 @@
 // --- Configuration ---
 const PROXY_ENDPOINT = "http://localhost:8000/zotero";
 const BIB_ENDPOINT = "http://localhost:8000/bibliography";
+const HEALTH_ENDPOINT = "http://localhost:8000/health";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS"; // Key for storing citation data in slide's custom properties
 
 // --- Office.onReady Initialization ---
@@ -36,6 +37,9 @@ Office.onReady((info) => {
     );
 
     displayCitationsFromSlide();
+
+  // Kick off server health polling
+  startHealthPolling();
   };
 
   if (document.readyState === "loading") {
@@ -82,6 +86,38 @@ async function handleAddCitation() {
     document.getElementById("output").textContent = "Error: Request to Zotero proxy failed. Is it running?";
   };
   xhr.send();
+}
+
+// --- Server Health Polling ---
+let healthIntervalId: number | null = null;
+async function checkHealthOnce() {
+  const statusEl = document.getElementById("status");
+  if (!statusEl) return;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const resp = await fetch(HEALTH_ENDPOINT, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (resp.ok) {
+      statusEl.textContent = "Zotero proxy connected";
+      statusEl.className = "status ok";
+    } else {
+      statusEl.textContent = "Proxy unreachable (" + resp.status + ")";
+      statusEl.className = "status error";
+    }
+  } catch (e) {
+    const statusEl2 = document.getElementById("status");
+    if (statusEl2) {
+      statusEl2.textContent = "Proxy not running";
+      statusEl2.className = "status error";
+    }
+  }
+}
+
+function startHealthPolling() {
+  checkHealthOnce();
+  if (healthIntervalId !== null) return;
+  healthIntervalId = window.setInterval(checkHealthOnce, 8000);
 }
 
 /**

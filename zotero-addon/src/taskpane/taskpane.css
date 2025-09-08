@@ -101,6 +101,10 @@ body {
 
 h1 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
 
+.status { font-size:12px; margin: -4px 0 10px; color: var(--c-text-muted); }
+.status.ok { color: var(--c-accent); }
+.status.error { color: var(--c-danger); }
+
 .actions { display: flex; margin-bottom: 14px; }
 .actions button { min-width: 120px; margin-right: 8px; }
 .actions button:last-child { margin-right: 0; }
