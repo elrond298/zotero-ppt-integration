@@ -456,7 +456,51 @@ async function displayCitationsFromSlide() {
  */
 async function addBibliographySlide(bibliographyText) {
   await PowerPoint.run(async function (context) {
-    context.presentation.slides.add();
+    // 2) Load masters
+    const slideMasters = context.presentation.slideMasters;
+    slideMasters.load("items");
+    await context.sync();
+
+    // 3) Load each master's layouts collection
+    slideMasters.items.forEach((m) => m.layouts.load("items"));
+    await context.sync();
+
+    // 4) Load the props we need on every layout (avoid 'type' to prevent PropertyNotLoaded)
+    slideMasters.items.forEach((m) =>
+      m.layouts.items.forEach((layout) => layout.load("id,name"))
+    );
+    await context.sync();
+
+    // (Optional) Log all layout names/ids to help debugging
+    // slideMasters.items.forEach((m) => {
+    //   m.layouts.items.forEach((l) => {
+    //     console.log(`Layout: "${l.name}"  |  id: ${l.id}`);
+    //   });
+    // });
+
+    // 5) Find "Title and Content" by name (robust case-insensitive check)
+    let layoutId = null;
+    outer: for (const master of slideMasters.items) {
+      for (const layout of master.layouts.items) {
+        const n = (layout.name || "").toLowerCase();
+        if (n === "title and content" || (n.includes("title") && n.includes("content"))) {
+          layoutId = layout.id;
+          break outer;
+        }
+      }
+    }
+
+    if (!layoutId) {
+      console.log('Could not find a layout named "Title and Content". Check console output above for available names/ids.');
+      return;
+    }
+
+    const newSlideOptions: PowerPoint.AddSlideOptions = {
+      layoutId: layoutId
+    };
+
+    // 3) Insert new slide using layoutId at the same index
+    context.presentation.slides.add(newSlideOptions);
     await context.sync();
 
     // The index for the new slide will be the current number of slides.
@@ -466,33 +510,62 @@ async function addBibliographySlide(bibliographyText) {
     // Get the newly added slide by its index.
     context.presentation.load("slides");
     await context.sync();
-    const newSlide = context.presentation.slides.getItemAt(newSlideIndex.value-1);
+    const newSlide = context.presentation.slides.getItemAt(newSlideIndex.value - 1);
     newSlide.load("id");
     await context.sync();
     // No need to load 'id' here unless you specifically need it later.
     // Operations on the slide object will work without loading a property first.
 
-    // Add a title
-    const titleShape = newSlide.shapes.addTextBox("References", {
+    // Add the bibliography content
+    // Try to find existing shapes for title and content
+    let titleShape = null;
+    let contentShape = null;
+
+    // Load all shapes on the new slide
+    newSlide.shapes.load("items");
+    await context.sync();
+
+    // Try to find a shape with 'title' in its name (case-insensitive)
+    for (const shape of newSlide.shapes.items) {
+      shape.load("name");
+    }
+    await context.sync();
+
+    for (const shape of newSlide.shapes.items) {
+      const name = (shape.name || "").toLowerCase();
+      if (!titleShape && name.includes("title")) {
+      titleShape = shape;
+      } else if (!contentShape && name.includes("content")) {
+      contentShape = shape;
+      }
+    }
+
+    // If no title shape found, create one
+    if (!titleShape) {
+      titleShape = newSlide.shapes.addTextBox("References", {
       left: 50,
       top: 50,
       width: 860,
       height: 100
-    });
+      });
+    }
+    titleShape.textFrame.textRange.text = "References";
     titleShape.textFrame.textRange.font.size = 44;
 
-    // Add the bibliography content
-    const contentShape = newSlide.shapes.addTextBox(bibliographyText, {
+    // If no content shape found, create one
+    if (!contentShape) {
+      contentShape = newSlide.shapes.addTextBox(bibliographyText, {
       left: 50,
       top: 150,
       width: 860,
       height: 350
-    });
+      });
+    } else {
+      contentShape.textFrame.textRange.text = bibliographyText;
+    }
     contentShape.textFrame.textRange.font.size = 14;
-    // Allow the text box to resize vertically to fit all the content
     contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
 
-    // Sync all the queued changes (add slide, add text boxes, format text).
     await context.sync();
   });
 }
