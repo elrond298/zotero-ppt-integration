@@ -14,15 +14,16 @@
 			#output { margin-top: 16px; }
 		</style>
 	</head>
-	<body>
-		<h1>Zotero Citations</h1>
-		<button id="add-citation" class="ms-Button">
-			<span class="ms-Button-label">Add Citation</span>
-		</button>
-		<button id="generate-bibliography" class="ms-Button">
-			<span class="ms-Button-label">Generate Bibliography</span>
-		</button>
-		<!-- Changed from <pre> to <div> to hold interactive list -->
-		<div id="output"></div>
+		<body data-theme="dark">
+			<h1>Zotero Citations</h1>
+			<div class="actions">
+				<button id="add-citation" class="ms-Button primary">
+					<span class="ms-Button-label">Add Citation</span>
+				</button>
+				<button id="generate-bibliography" class="ms-Button">
+					<span class="ms-Button-label">Generate Bibliography</span>
+				</button>
+			</div>
+			<div id="output" aria-live="polite"></div>
 	</body>
 </html>
