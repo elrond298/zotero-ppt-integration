@@ -156,7 +156,7 @@ async function handleGenerateBibliography() {
 function formatSingleCitation(item) {
   const creators = item.item.creators;
   const date = item.item.date || "";
-  const year = date.substring(0, 4) || "n.d."; // n.d. for "no date"
+  const year = extractYearFromDate(date);
 
   let authorString = "Unknown Author";
   if (creators && creators.length > 0) {
@@ -169,6 +169,42 @@ function formatSingleCitation(item) {
     }
   }
   return `${authorString}, ${year}`;
+}
+
+/**
+ * Attempts to robustly extract a 4-digit publication year from a Zotero date string.
+ * Zotero dates can appear in many formats, e.g.:
+ *  - 2024-09-08
+ *  - 2024-09
+ *  - 2024
+ *  - September 8, 2024
+ *  - 8 Sep 2024
+ *  - 08/09/2024 or 09/08/2024
+ *  - 2024 (Spring)
+ * If multiple 4-digit years appear, the first is typically the publication year.
+ * Falls back to JavaScript Date parsing if regex fails, otherwise returns 'n.d.'.
+ * @param {string} dateStr
+ * @returns {string} 4-digit year or 'n.d.'
+ */
+function extractYearFromDate(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return 'n.d.';
+
+  // Common case: starts with YYYY-
+  const isoMatch = /^(\d{4})[-/]/.exec(dateStr);
+  if (isoMatch) return isoMatch[1];
+
+  // General search for any plausible 4-digit year 1500-2099 (broad enough for most scholarly works)
+  const yearMatch = /(1[5-9]\d{2}|20\d{2})/.exec(dateStr);
+  if (yearMatch) return yearMatch[1];
+
+  // Try Date parsing as a last resort (may misinterpret ambiguous day/month, but we only need year)
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    const yr = parsed.getFullYear();
+    if (yr > 1500 && yr < 2100) return String(yr);
+  }
+
+  return 'n.d.';
 }
 
 /**
