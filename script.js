@@ -455,6 +455,9 @@ async function displayCitationsFromSlide() {
  * @param bibliographyText The string content for the bibliography.
  */
 async function addBibliographySlide(bibliographyText) {
+  // Remove trailing newline(s) and extra spaces
+  const trimmedBibliographyText = bibliographyText.replace(/\s+$/, '');
+
   await PowerPoint.run(async function (context) {
     // 2) Load masters
     const slideMasters = context.presentation.slideMasters;
@@ -554,14 +557,14 @@ async function addBibliographySlide(bibliographyText) {
 
     // If no content shape found, create one
     if (!contentShape) {
-      contentShape = newSlide.shapes.addTextBox(bibliographyText, {
+      contentShape = newSlide.shapes.addTextBox(trimmedBibliographyText, {
       left: 50,
       top: 150,
       width: 860,
       height: 350
       });
     } else {
-      contentShape.textFrame.textRange.text = bibliographyText;
+      contentShape.textFrame.textRange.text = trimmedBibliographyText;
     }
     contentShape.textFrame.textRange.font.size = 14;
     contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
