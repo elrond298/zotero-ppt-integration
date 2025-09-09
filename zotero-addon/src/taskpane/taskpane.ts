@@ -434,7 +434,7 @@ async function removeCitation(keyToRemove) {
  */
 async function displayCitationsFromSlide() {
   const outputElement = document.getElementById("output");
-  // Clear previous content
+  // Clear previous content immediately
   outputElement.innerHTML = "";
 
   try {
@@ -455,34 +455,26 @@ async function displayCitationsFromSlide() {
         try {
           const keysArray = JSON.parse(zoteroTag.value);
           if (Array.isArray(keysArray) && keysArray.length > 0) {
-            // Create a header and a list
             const header = document.createElement("p");
             header.textContent = "Citations on this slide:";
             const list = document.createElement("ul");
 
             keysArray.forEach(key => {
               const listItem = document.createElement("li");
-
-              // Create the remove button
               const removeButton = document.createElement("button");
               removeButton.className = "remove-btn";
-              removeButton.innerHTML = "&times;"; // 'x' symbol
+              removeButton.innerHTML = "&times;";
               removeButton.title = `Remove citation: ${key}`;
-              removeButton.dataset.key = key; // Store the key in a data attribute
-
-              // Create the text span
+              removeButton.dataset.key = key;
               const keyText = document.createElement("span");
               keyText.textContent = key;
-
-              // Assemble the list item
               listItem.appendChild(removeButton);
               listItem.appendChild(keyText);
               list.appendChild(listItem);
             });
 
-            outputElement.appendChild(header);
-            outputElement.appendChild(list);
-
+            // Atomic replacement prevents duplicate sections if multiple async calls complete out-of-order
+            (outputElement as HTMLElement).replaceChildren(header, list);
           } else {
             outputElement.textContent = "No Zotero citations found on this slide.";
           }
