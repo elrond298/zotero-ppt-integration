@@ -20,7 +20,8 @@
     "prettier": "office-addin-lint prettier",
     "signin": "office-addin-dev-settings m365-account login",
     "signout": "office-addin-dev-settings m365-account logout",
-  "start": "concurrently -k -n PY,ADDIN -c magenta,cyan \"python server/server.py\" \"office-addin-debugging start manifest.xml\"",
+  "prestart": "office-addin-dev-certs install",
+  "start": "concurrently -n WEB,PY,ADDIN -c green,magenta,cyan \"npm:dev-server\" \"python server/server.py\" \"office-addin-debugging start manifest.xml\"",
     "stop": "office-addin-debugging stop manifest.xml",
     "validate": "office-addin-manifest validate manifest.xml",
     "watch": "webpack --mode development --watch"

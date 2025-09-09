@@ -4,12 +4,24 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError
 import json
 import traceback
+import time
+import sys
+import socket
+
+# Simple timestamp helper
+def _ts():
+    return time.strftime('%Y-%m-%d %H:%M:%S')
 
 PORT = 8000
 ZOTERO_CAYW_ENDPOINT = "http://127.0.0.1:23119/better-bibtex/cayw?format=json"
 BBT_JSONRPC_ENDPOINT = "http://127.0.0.1:23119/better-bibtex/json-rpc"
 
 class ProxyHandler(BaseHTTPRequestHandler):
+    # More compact structured log output
+    def log_message(self, format, *args):  # noqa: D401 (override)
+        # Default implementation writes to stderr; keep that but add timestamp prefix
+        sys.stderr.write(f"[{_ts()}] {self.address_string()} - {format % args}\n")
+
     def do_OPTIONS(self):
         self.send_response(200, "ok")
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -90,6 +102,29 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
 if __name__ == '__main__':
-    server = HTTPServer(('localhost', PORT), ProxyHandler)
-    print(f"Local proxy server running on http://localhost:{PORT}")
-    server.serve_forever()
+    try:
+        server = HTTPServer(('localhost', PORT), ProxyHandler)
+    except OSError as e:
+        # Common cause: port already in use -> leads to exit code 1 without clear context
+        print(f"[{_ts()}] FATAL: Could not bind to port {PORT} (likely already in use). Error: {e}", flush=True)
+        # Give user a quick hint on what holds the port (Windows netstat example)
+        if hasattr(e, 'winerror') and e.winerror == 10048:  # Address in use
+            print("Hint: Another instance may be running. Close it or free the port. Example check: netstat -ano | findstr :8000", flush=True)
+        sys.exit(1)
+    print(f"[{_ts()}] Local proxy server running on http://localhost:{PORT}", flush=True)
+    print(f"[{_ts()}] Forwarding /zotero -> {ZOTERO_CAYW_ENDPOINT}", flush=True)
+    print(f"[{_ts()}] Forwarding /bibliography -> {BBT_JSONRPC_ENDPOINT}", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print(f"[{_ts()}] Shutdown requested (Ctrl+C)", flush=True)
+    except Exception as e:  # Catch unexpected to avoid silent exit code 1
+        print(f"[{_ts()}] FATAL: Unhandled exception in serve_forever: {e}", flush=True)
+        print(traceback.format_exc())
+        sys.exit(1)
+    finally:
+        try:
+            server.server_close()
+        except Exception:
+            pass
+        print(f"[{_ts()}] Server stopped", flush=True)
