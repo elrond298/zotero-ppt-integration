@@ -483,6 +483,7 @@ async function displayCitationsFromSlide() {
               removeButton.dataset.key = key;
 
               const keyText = document.createElement("span");
+              keyText.className = "citation-key";
               keyText.textContent = key;
 
               listItem.appendChild(removeButton);
