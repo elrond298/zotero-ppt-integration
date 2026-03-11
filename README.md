@@ -86,7 +86,7 @@ Now, you will copy the project files into a new Script Lab snippet.
 
 #### a. HTML Tab
 
-Copy the entire content of `citationkeysindex.html` and paste it into the **HTML** tab, replacing any existing content.
+Copy the entire content of `index.html` and paste it into the **HTML** tab, replacing any existing content.
 
 ```html
 <button id="add-citation" class="ms-Button">

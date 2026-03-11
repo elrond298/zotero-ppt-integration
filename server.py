@@ -23,9 +23,17 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if self.path == '/health':
             # Simple health check. We don't ping Zotero here to keep it fast.
             self._send_json_response(200, {"status": "ok"})
-        elif self.path == '/zotero':
+        elif self.path.startswith('/zotero'):
             try:
-                with urlopen(ZOTERO_CAYW_ENDPOINT) as response:
+                # Check if 'selected=true' parameter is present
+                selected = 'selected=true' in self.path
+                
+                # Build the endpoint URL
+                endpoint = ZOTERO_CAYW_ENDPOINT
+                if selected:
+                    endpoint += '&selected=true'
+                
+                with urlopen(endpoint) as response:
                     data = response.read()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')

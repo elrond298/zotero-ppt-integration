@@ -3,12 +3,55 @@ const PROXY_ENDPOINT = "http://localhost:8000/zotero";
 const BIB_ENDPOINT = "http://localhost:8000/bibliography";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS"; // Key for storing citation data in slide's custom properties
 
+// Log levels
+const LOG_LEVELS = {
+  NONE: 0,
+  ERROR: 1,
+  WARN: 2,
+  INFO: 3,
+  DEBUG: 4
+};
+
+// Global log level parameter to control logging verbosity, defaulting to WARN
+const LOG_LEVEL = LOG_LEVELS.WARN;
+
+// Custom logging functions that respect the log level setting
+function logDebug(...args) {
+  if (LOG_LEVEL >= LOG_LEVELS.DEBUG) {
+    console.log("[DEBUG]", ...args);
+  }
+}
+
+function logInfo(...args) {
+  if (LOG_LEVEL >= LOG_LEVELS.INFO) {
+    console.log("[INFO]", ...args);
+  }
+}
+
+function logWarn(...args) {
+  if (LOG_LEVEL >= LOG_LEVELS.WARN) {
+    console.warn("[WARN]", ...args);
+  }
+}
+
+function logError(...args) {
+  if (LOG_LEVEL >= LOG_LEVELS.ERROR) {
+    console.error("[ERROR]", ...args);
+  }
+}
+
+// For backward compatibility, keep the original log function as an alias to logInfo
+function log(...args) {
+  logInfo(...args);
+}
+
 // --- Office.onReady Initialization ---
 // This function is called when the Office host is ready.
 Office.onReady((info) => {
   if (info.host === Office.HostType.PowerPoint) {
     // Wire up the button event listeners
     document.getElementById("add-citation").addEventListener("click", handleAddCitation);
+    document.getElementById("add-citation-selected").addEventListener("click", handleAddCitationSelected);
     document.getElementById("generate-bibliography").addEventListener("click", handleGenerateBibliography);
 
     // Add a click listener to the output area for handling tag removal (event delegation)
@@ -21,7 +64,7 @@ Office.onReady((info) => {
       displayCitationsFromSlide,
       (asyncResult) => {
         if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-          console.error("Could not register selection change handler: " + asyncResult.error.message);
+          logError("Could not register selection change handler: " + asyncResult.error.message);
         }
       }
     );
@@ -45,23 +88,56 @@ async function handleAddCitation() {
       if (xhr.status === 200) {
         try {
           var response = JSON.parse(xhr.responseText);
-          console.log("Zotero response:", response);
+          log("Zotero response:", response);
 
           // Call the function to insert citations into PowerPoint
           insertCitationsIntoPowerPoint(response);
 
         } catch (e) {
-          console.error("Error parsing JSON response:", e);
+          logError("Error parsing JSON response:", e);
           document.getElementById("output").textContent = "Error: Could not parse Zotero data.";
         }
       } else {
-        console.error("Request failed with status:", xhr.status);
+        logError("Request failed with status:", xhr.status);
         document.getElementById("output").textContent = `Error: Could not connect to Zotero (Status: ${xhr.status}).`;
       }
     }
   };
   xhr.onerror = function () {
-    console.error("Request failed");
+    logError("Request failed");
+    document.getElementById("output").textContent = "Error: Request to Zotero proxy failed. Is it running?";
+  };
+  xhr.send();
+}
+
+/**
+ * Fetches citation data from the Zotero proxy with selected=true parameter and triggers the insertion process.
+ */
+async function handleAddCitationSelected() {
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", PROXY_ENDPOINT + "?selected=true", true);
+  xhr.onreadystatechange = function () {
+    if (xhr.readyState === 4) {
+      if (xhr.status === 200) {
+        try {
+          var response = JSON.parse(xhr.responseText);
+          log("Zotero response (selected):", response);
+
+          // Call the function to insert citations into PowerPoint
+          insertCitationsIntoPowerPoint(response);
+
+        } catch (e) {
+          logError("Error parsing JSON response:", e);
+          document.getElementById("output").textContent = "Error: Could not parse Zotero data.";
+        }
+      } else {
+        logError("Request failed with status:", xhr.status);
+        document.getElementById("output").textContent = `Error: Could not connect to Zotero (Status: ${xhr.status}).`;
+      }
+    }
+  };
+  xhr.onerror = function () {
+    logError("Request failed");
     document.getElementById("output").textContent = "Error: Request to Zotero proxy failed. Is it running?";
   };
   xhr.send();
@@ -117,14 +193,14 @@ async function handleGenerateBibliography() {
               keysArray.forEach(key => allCitationKeys.add(key));
             }
           } catch (e) {
-            console.warn(`Could not parse citation keys on a slide`, e);
+            logWarn(`Could not parse citation keys on a slide`, e);
           }
         }
       }
     });
 
     const uniqueKeys = Array.from(allCitationKeys);
-    console.log("Found unique citation keys:", uniqueKeys);
+    log("Found unique citation keys:", uniqueKeys);
 
     if (uniqueKeys.length === 0) {
       outputElement.textContent = "No citations found in the presentation.";
@@ -140,7 +216,7 @@ async function handleGenerateBibliography() {
     outputElement.textContent = "Bibliography generated successfully!";
 
   } catch (error) {
-    console.error("Error generating bibliography:", error);
+    logError("Error generating bibliography:", error);
     outputElement.textContent = "Error: Could not generate bibliography.";
   }
 }
@@ -219,7 +295,7 @@ async function fetchBibliographyFromServer(keys) {
       'Content-Type': 'application/json',
     },
     // You can configure the style here, e.g., 'apalike', 'unsrt', 'plain'
-    body: JSON.stringify({ keys: keys, style: 'apalike' })
+    body: JSON.stringify({ keys: keys, style: 'journal-of-geophysical-research-atmospheres' })
   });
 
   if (!response.ok) {
@@ -248,7 +324,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
       await context.sync();
 
       if (slides.items.length === 0) {
-        console.error("No slide selected.");
+        logError("No slide selected.");
         document.getElementById("output").textContent = "Please select a slide first.";
         return;
       }
@@ -256,7 +332,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
 
       // Check if the response is a valid array
       if (!Array.isArray(zoteroItems) || zoteroItems.length === 0) {
-        console.log("No valid citation items found in the response.");
+        log("No valid citation items found in the response.");
         document.getElementById("output").textContent = "No citations found to insert.";
         return;
       }
@@ -276,7 +352,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
             keysArray.forEach(key => citationKeys.add(key));
           }
         } catch (e) {
-          console.error("Could not parse existing citation tags:", e);
+          logError("Could not parse existing citation tags:", e);
         }
       }
       // Add new keys from the current insertion
@@ -309,7 +385,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
         // Check if the error is the specific one we expect for no text selection.
         if (error.name === 'RichApi.Error' && error.code === 'GeneralException') {
           // Fallback: Create a new text box on the slide.
-          console.log("No text range selected. Creating a new text box.");
+          log("No text range selected. Creating a new text box.");
           const leftPosition = 100;
           const topPosition = 150;
           const textBox = slide.shapes.addTextBox(citationsText, { left: leftPosition, top: topPosition, width: 400, height: 50 });
@@ -317,7 +393,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
           await context.sync();
         } else {
           // For any other unexpected error, re-throw it to be caught by the outer handler.
-          console.error("An unexpected error occurred during text insertion:", error);
+          logError("An unexpected error occurred during text insertion:", error);
           throw error;
         }
       }
@@ -328,7 +404,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
     await displayCitationsFromSlide();
 
   } catch (error) {
-    console.error("Error interacting with PowerPoint:", error);
+    logError("Error interacting with PowerPoint:", error);
     document.getElementById("output").textContent = "Error: Could not insert citations.";
   }
 }
@@ -353,7 +429,7 @@ async function removeCitation(keyToRemove) {
         try {
           currentKeys = JSON.parse(zoteroTag.value);
         } catch (e) {
-          console.error("Could not parse existing tags for removal:", e);
+          logError("Could not parse existing tags for removal:", e);
           return; // Exit if tags are corrupt
         }
 
@@ -370,7 +446,7 @@ async function removeCitation(keyToRemove) {
     await displayCitationsFromSlide();
 
   } catch (error) {
-    console.error("Error removing citation:", error);
+    logError("Error removing citation:", error);
     document.getElementById("output").textContent = "Error: Could not remove citation.";
   }
 }
@@ -424,7 +500,7 @@ async function displayCitationsFromSlide() {
             outputElement.textContent = "No Zotero citations found on this slide.";
           }
         } catch (e) {
-          console.error("Error parsing citation tags from slide:", e);
+          logError("Error parsing citation tags from slide:", e);
           outputElement.textContent = "Error reading citations from this slide.";
         }
       } else {
@@ -432,7 +508,8 @@ async function displayCitationsFromSlide() {
       }
     });
   } catch (error) {
-    console.error("Error displaying citations from slide:", error);
+    logError("Error displaying citations from slide:", error);
+    // Avoid overwriting an important message if this fails in the background.
     if (outputElement.innerHTML === "") {
       outputElement.textContent = "Could not load citations for this slide.";
     }
@@ -448,52 +525,39 @@ async function addBibliographySlide(bibliographyText) {
   const trimmedBibliographyText = bibliographyText.replace(/\s+$/, '');
 
   await PowerPoint.run(async function (context) {
-    // 2) Load masters
-    const slideMasters = context.presentation.slideMasters;
-    slideMasters.load("items");
+    const slideMasters = context.presentation.slideMasters.load("id, name, layouts/items/name, layouts/items/id");
     await context.sync();
 
-    // 3) Load each master's layouts collection
-    slideMasters.items.forEach((m) => m.layouts.load("items"));
-    await context.sync();
-
-    // 4) Load the props we need on every layout (avoid 'type' to prevent PropertyNotLoaded)
-    slideMasters.items.forEach((m) =>
-      m.layouts.items.forEach((layout) => layout.load("id,name"))
-    );
-    await context.sync();
-
-    // (Optional) Log all layout names/ids to help debugging
-    // slideMasters.items.forEach((m) => {
-    //   m.layouts.items.forEach((l) => {
-    //     console.log(`Layout: "${l.name}"  |  id: ${l.id}`);
-    //   });
-    // });
-
-    // 5) Find "Title and Content" by name (robust case-insensitive check)
+    let targetMaster = slideMasters.items[0] || null;
     let layoutId = null;
+
     outer: for (const master of slideMasters.items) {
       for (const layout of master.layouts.items) {
-        const n = (layout.name || "").toLowerCase();
-        if (n === "title and content" || (n.includes("title") && n.includes("content"))) {
+        const layoutName = (layout.name || "").toLowerCase();
+        if (layoutName === "title and content" || (layoutName.includes("title") && layoutName.includes("content"))) {
+          targetMaster = master;
           layoutId = layout.id;
           break outer;
         }
       }
     }
 
-    if (!layoutId) {
-      console.log('Could not find a layout named "Title and Content". Check console output above for available names/ids.');
-      return;
+    if (!targetMaster) {
+      throw new Error("No slide master available for bibliography slide creation.");
     }
 
-    const newSlideOptions = {
-      layoutId: layoutId
-    };
+    if (!layoutId) {
+      layoutId = targetMaster.layouts.items[1]?.id || targetMaster.layouts.items[0]?.id || null;
+    }
 
-    // 3) Insert new slide using layoutId at the same index
+    logInfo("loaded master");
+    const newSlideOptions = {
+      slideMasterId: targetMaster.id,
+      ...(layoutId ? { layoutId } : {})
+    };
     context.presentation.slides.add(newSlideOptions);
     await context.sync();
+    logInfo("inserted slide");
 
     // The index for the new slide will be the current number of slides.
     const newSlideIndex = context.presentation.slides.getCount();
@@ -508,55 +572,64 @@ async function addBibliographySlide(bibliographyText) {
     // No need to load 'id' here unless you specifically need it later.
     // Operations on the slide object will work without loading a property first.
 
-    // Add the bibliography content
-    // Try to find existing shapes for title and content
-    let titleShape = null;
-    let contentShape = null;
+    try {
+      let titleShape = null;
+      let contentShape = null;
 
-    // Load all shapes on the new slide
-    newSlide.shapes.load("items");
-    await context.sync();
+      newSlide.shapes.load("items/name");
+      await context.sync();
 
-    // Try to find a shape with 'title' in its name (case-insensitive)
-    for (const shape of newSlide.shapes.items) {
-      shape.load("name");
-    }
-    await context.sync();
-
-    for (const shape of newSlide.shapes.items) {
-      const name = (shape.name || "").toLowerCase();
-      if (!titleShape && name.includes("title")) {
-      titleShape = shape;
-      } else if (!contentShape && name.includes("content")) {
-      contentShape = shape;
+      for (const shape of newSlide.shapes.items) {
+        const name = (shape.name || "").toLowerCase();
+        if (!titleShape && name.includes("title")) {
+          titleShape = shape;
+        } else if (!contentShape && (name.includes("content") || name.includes("body"))) {
+          contentShape = shape;
+        }
       }
-    }
 
-    // If no title shape found, create one
-    if (!titleShape) {
-      titleShape = newSlide.shapes.addTextBox("References", {
-      left: 50,
-      top: 50,
-      width: 860,
-      height: 100
-      });
-    }
-    titleShape.textFrame.textRange.text = "References";
-    titleShape.textFrame.textRange.font.size = 44;
+      if (!titleShape && newSlide.shapes.items[0]) {
+        titleShape = newSlide.shapes.items[0];
+      }
+      if (!contentShape && newSlide.shapes.items[1]) {
+        contentShape = newSlide.shapes.items[1];
+      }
 
-    // If no content shape found, create one
-    if (!contentShape) {
-      contentShape = newSlide.shapes.addTextBox(trimmedBibliographyText, {
-      left: 50,
-      top: 150,
-      width: 860,
-      height: 350
-      });
-    } else {
+      if (!titleShape) {
+        throw new Error("No title shape found on new bibliography slide.");
+      }
+
+      titleShape.textFrame.textRange.text = "References";
+      titleShape.textFrame.textRange.font.size = 44;
+
+      if (!contentShape) {
+        throw new Error("No content shape found on new bibliography slide.");
+      }
+
       contentShape.textFrame.textRange.text = trimmedBibliographyText;
+      contentShape.textFrame.textRange.font.size = 14;
+      contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
     }
-    contentShape.textFrame.textRange.font.size = 14;
-    contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+    catch (error) {
+      logError("Error setting content:", error);
+
+      const titleShape = newSlide.shapes.addTextBox("References", {
+        left: 50,
+        top: 50,
+        width: 860,
+        height: 100
+      });
+      titleShape.textFrame.textRange.font.size = 44;
+
+      const contentShape = newSlide.shapes.addTextBox(trimmedBibliographyText, {
+        left: 50,
+        top: 150,
+        width: 860,
+        height: 350
+      });
+      contentShape.textFrame.textRange.font.size = 14;
+      contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+    }
 
     await context.sync();
   });
