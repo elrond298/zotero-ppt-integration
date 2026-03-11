@@ -4,7 +4,8 @@
 const PROXY_ENDPOINT = "http://localhost:8000/zotero";
 const BIB_ENDPOINT = "http://localhost:8000/bibliography";
 const HEALTH_ENDPOINT = "http://localhost:8000/health";
-const BIBLIOGRAPHY_STYLE = "journal-of-geophysical-research-atmospheres";
+const DEFAULT_BIBLIOGRAPHY_STYLE = "journal-of-geophysical-research-atmospheres";
+const BIBLIOGRAPHY_STYLE_STORAGE_KEY = "zotero-ppt:bibliography-style";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS";
 
 const LOG_LEVELS = {
@@ -57,6 +58,7 @@ Office.onReady((info) => {
     const addBtn = document.getElementById("add-citation");
     const addSelectedBtn = document.getElementById("add-citation-selected");
     const bibBtn = document.getElementById("generate-bibliography");
+    const bibliographyStyleSelect = document.getElementById("bibliography-style");
     const output = document.getElementById("output");
 
     if (!addBtn || !bibBtn || !output) {
@@ -69,6 +71,10 @@ Office.onReady((info) => {
       addSelectedBtn.addEventListener("click", handleAddCitationSelected);
     }
     bibBtn.addEventListener("click", handleGenerateBibliography);
+    if (bibliographyStyleSelect) {
+      initializeBibliographyStyleSelect(bibliographyStyleSelect);
+      bibliographyStyleSelect.addEventListener("change", handleBibliographyStyleChange);
+    }
     output.addEventListener("click", handleRemoveClick);
 
     Office.context.document.addHandlerAsync(
@@ -93,17 +99,17 @@ Office.onReady((info) => {
 });
 
 async function handleAddCitation() {
-  var xhr = new XMLHttpRequest();
+  const xhr = new XMLHttpRequest();
   xhr.open("GET", PROXY_ENDPOINT, true);
   xhr.onreadystatechange = function () {
     if (xhr.readyState === 4) {
       if (xhr.status === 200) {
         try {
-          var response = JSON.parse(xhr.responseText);
+          const response = JSON.parse(xhr.responseText);
           log("Zotero response:", response);
           insertCitationsIntoPowerPoint(response);
-        } catch (e) {
-          logError("Error parsing JSON response:", e);
+        } catch (error) {
+          logError("Error parsing JSON response:", error);
           document.getElementById("output").textContent = "Error: Could not parse Zotero data.";
         }
       } else {
@@ -120,17 +126,17 @@ async function handleAddCitation() {
 }
 
 async function handleAddCitationSelected() {
-  var xhr = new XMLHttpRequest();
+  const xhr = new XMLHttpRequest();
   xhr.open("GET", PROXY_ENDPOINT + "?selected=true", true);
   xhr.onreadystatechange = function () {
     if (xhr.readyState === 4) {
       if (xhr.status === 200) {
         try {
-          var response = JSON.parse(xhr.responseText);
+          const response = JSON.parse(xhr.responseText);
           log("Zotero response (selected):", response);
           insertCitationsIntoPowerPoint(response);
-        } catch (e) {
-          logError("Error parsing JSON response:", e);
+        } catch (error) {
+          logError("Error parsing JSON response:", error);
           document.getElementById("output").textContent = "Error: Could not parse Zotero data.";
         }
       } else {
@@ -165,7 +171,7 @@ async function checkHealthOnce() {
       statusEl.textContent = "Proxy unreachable (" + resp.status + ")";
       statusEl.className = "status error";
     }
-  } catch (e) {
+  } catch (error) {
     statusEl.textContent = "Proxy not running";
     statusEl.className = "status error";
   }
@@ -182,6 +188,33 @@ function startHealthPolling() {
     return;
   }
   healthIntervalId = window.setInterval(checkHealthOnce, 8000);
+}
+
+function initializeBibliographyStyleSelect(selectElement) {
+  const savedStyle = window.localStorage.getItem(BIBLIOGRAPHY_STYLE_STORAGE_KEY);
+  const initialStyle = savedStyle || DEFAULT_BIBLIOGRAPHY_STYLE;
+  let hasOption = false;
+  for (let index = 0; index < selectElement.options.length; index += 1) {
+    if (selectElement.options[index].value === initialStyle) {
+      hasOption = true;
+      break;
+    }
+  }
+  selectElement.value = hasOption ? initialStyle : DEFAULT_BIBLIOGRAPHY_STYLE;
+}
+
+function handleBibliographyStyleChange(event) {
+  const nextStyle = event.target.value || DEFAULT_BIBLIOGRAPHY_STYLE;
+  window.localStorage.setItem(BIBLIOGRAPHY_STYLE_STORAGE_KEY, nextStyle);
+}
+
+function getSelectedBibliographyStyle() {
+  const selectElement = document.getElementById("bibliography-style");
+  if (selectElement instanceof HTMLSelectElement && selectElement.value) {
+    return selectElement.value;
+  }
+
+  return window.localStorage.getItem(BIBLIOGRAPHY_STYLE_STORAGE_KEY) || DEFAULT_BIBLIOGRAPHY_STYLE;
 }
 
 function handleRemoveClick(event) {
@@ -219,8 +252,8 @@ async function handleGenerateBibliography() {
             if (Array.isArray(keysArray)) {
               keysArray.forEach((key) => allCitationKeys.add(key));
             }
-          } catch (e) {
-            logWarn("Could not parse citation keys on a slide", e);
+          } catch (error) {
+            logWarn("Could not parse citation keys on a slide", error);
           }
         }
       }
@@ -234,7 +267,7 @@ async function handleGenerateBibliography() {
       return;
     }
 
-    const formattedBibliography = await fetchBibliographyFromServer(uniqueKeys);
+    const formattedBibliography = await fetchBibliographyFromServer(uniqueKeys, getSelectedBibliographyStyle());
     await addBibliographySlide(formattedBibliography);
 
     outputElement.textContent = "Bibliography generated successfully!";
@@ -288,13 +321,13 @@ function extractYearFromDate(dateStr) {
   return "n.d.";
 }
 
-async function fetchBibliographyFromServer(keys) {
+async function fetchBibliographyFromServer(keys, style) {
   const response = await fetch(BIB_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ keys, style: BIBLIOGRAPHY_STYLE }),
+    body: JSON.stringify({ keys, style }),
   });
 
   if (!response.ok) {
@@ -331,7 +364,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
       await context.sync();
 
       const existingTag = customTags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
-      let citationKeys = new Set();
+      const citationKeys = new Set();
 
       if (existingTag) {
         try {
@@ -339,8 +372,8 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
           if (Array.isArray(keysArray)) {
             keysArray.forEach((key) => citationKeys.add(key));
           }
-        } catch (e) {
-          logError("Could not parse existing citation tags:", e);
+        } catch (error) {
+          logError("Could not parse existing citation tags:", error);
         }
       }
       zoteroItems.forEach((item) => citationKeys.add(item.citationKey));
@@ -397,8 +430,8 @@ async function removeCitation(keyToRemove) {
         let currentKeys = [];
         try {
           currentKeys = JSON.parse(zoteroTag.value);
-        } catch (e) {
-          logError("Could not parse existing tags for removal:", e);
+        } catch (error) {
+          logError("Could not parse existing tags for removal:", error);
           return;
         }
 
@@ -461,8 +494,8 @@ async function displayCitationsFromSlide() {
           } else {
             outputElement.textContent = "No Zotero citations found on this slide.";
           }
-        } catch (e) {
-          logError("Error parsing citation tags from slide:", e);
+        } catch (error) {
+          logError("Error parsing citation tags from slide:", error);
           outputElement.textContent = "Error reading citations from this slide.";
         }
       } else {

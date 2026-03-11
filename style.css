@@ -292,6 +292,36 @@ h1,
     gap: 8px;
 }
 
+.control-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    grid-column: 1 / -1;
+}
+
+.control-label {
+    color: var(--c-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .3px;
+}
+
+.control-select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: var(--c-bg-alt);
+    color: var(--c-text);
+    padding: 9px 12px;
+    font: 500 13px/1.2 var(--font-sans);
+}
+
+.control-select:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+}
+
 .button-group .ms-Button {
     width: 100%;
     margin-bottom: 0;

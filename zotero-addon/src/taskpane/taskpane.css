@@ -96,6 +96,36 @@ h1 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
     margin-bottom: 14px;
 }
 
+.control-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    grid-column: 1 / -1;
+}
+
+.control-label {
+    color: var(--c-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .3px;
+}
+
+.control-select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: var(--c-bg-alt);
+    color: var(--c-text);
+    padding: 9px 12px;
+    font: 500 13px/1.2 var(--font-sans);
+}
+
+.control-select:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+}
+
 .actions button {
     min-width: 0;
     width: 100%;
