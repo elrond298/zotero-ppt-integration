@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Zotero Citations</title>
+		<!-- Office.js MUST be loaded for Office.onReady to work -->
+		<script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+		<link rel="stylesheet" href="taskpane.css" />
+		<style>
+			body { font-family: Segoe UI, Arial, sans-serif; padding: 12px; }
+			h1 { font-size: 18px; margin-top:0; }
+			#output { margin-top: 16px; }
+		</style>
+	</head>
+		<body data-theme="dark">
+			<h1>Zotero Citations</h1>
+			<div id="status" class="status" aria-live="polite">Checking Zotero connection...</div>
+			<div class="actions">
+				<button id="add-citation" class="ms-Button primary">
+					<span class="ms-Button-label">Add Citation</span>
+				</button>
+				<button id="generate-bibliography" class="ms-Button">
+					<span class="ms-Button-label">Generate Bibliography</span>
+				</button>
+			</div>
+			<div id="output" aria-live="polite"></div>
+	</body>
+</html>

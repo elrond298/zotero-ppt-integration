@@ -1,21 +1,31 @@
 // --- Configuration ---
 const PROXY_ENDPOINT = "http://localhost:8000/zotero";
 const BIB_ENDPOINT = "http://localhost:8000/bibliography";
+const HEALTH_ENDPOINT = "http://localhost:8000/health";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS"; // Key for storing citation data in slide's custom properties
 
 // --- Office.onReady Initialization ---
 // This function is called when the Office host is ready.
 Office.onReady((info) => {
-  if (info.host === Office.HostType.PowerPoint) {
-    // Wire up the button event listeners
-    document.getElementById("add-citation").addEventListener("click", handleAddCitation);
-    document.getElementById("generate-bibliography").addEventListener("click", handleGenerateBibliography);
+  if (info.host !== Office.HostType.PowerPoint) {
+    console.warn("This add-in is built for PowerPoint. Current host:", info.host);
+    return;
+  }
 
-    // Add a click listener to the output area for handling tag removal (event delegation)
-    document.getElementById("output").addEventListener("click", handleRemoveClick);
+  const wireEvents = () => {
+    const addBtn = document.getElementById("add-citation");
+    const bibBtn = document.getElementById("generate-bibliography");
+    const output = document.getElementById("output");
 
-    // Add an event handler for when the slide selection changes.
-    // This will keep the displayed citation list in sync with the selected slide.
+    if (!addBtn || !bibBtn || !output) {
+      console.error("UI elements not found in the DOM. Check that scripts load after HTML body.");
+      return;
+    }
+
+    addBtn.addEventListener("click", handleAddCitation);
+    bibBtn.addEventListener("click", handleGenerateBibliography);
+    output.addEventListener("click", handleRemoveClick);
+
     Office.context.document.addHandlerAsync(
       Office.EventType.DocumentSelectionChanged,
       displayCitationsFromSlide,
@@ -26,10 +36,21 @@ Office.onReady((info) => {
       }
     );
 
-    // Perform an initial load of citations for the currently selected slide.
     displayCitationsFromSlide();
+
+  // Kick off server health polling
+  startHealthPolling();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireEvents, { once: true });
+  } else {
+    wireEvents();
   }
 });
+
+// NOTE: Avoiding insecure mixed-content calls from an HTTPS add-in to HTTP localhost.
+// If you see network failures, ensure the proxy/bibliography service also uses HTTPS or enable it via dev certs.
 
 
 // --- Event Handlers ---
@@ -65,6 +86,38 @@ async function handleAddCitation() {
     document.getElementById("output").textContent = "Error: Request to Zotero proxy failed. Is it running?";
   };
   xhr.send();
+}
+
+// --- Server Health Polling ---
+let healthIntervalId: number | null = null;
+async function checkHealthOnce() {
+  const statusEl = document.getElementById("status");
+  if (!statusEl) return;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const resp = await fetch(HEALTH_ENDPOINT, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (resp.ok) {
+      statusEl.textContent = "Zotero proxy connected";
+      statusEl.className = "status ok";
+    } else {
+      statusEl.textContent = "Proxy unreachable (" + resp.status + ")";
+      statusEl.className = "status error";
+    }
+  } catch (e) {
+    const statusEl2 = document.getElementById("status");
+    if (statusEl2) {
+      statusEl2.textContent = "Proxy not running";
+      statusEl2.className = "status error";
+    }
+  }
+}
+
+function startHealthPolling() {
+  checkHealthOnce();
+  if (healthIntervalId !== null) return;
+  healthIntervalId = window.setInterval(checkHealthOnce, 8000);
 }
 
 /**
@@ -381,6 +434,7 @@ async function removeCitation(keyToRemove) {
  */
 async function displayCitationsFromSlide() {
   const outputElement = document.getElementById("output");
+  // Clear previous content immediately
   outputElement.innerHTML = "";
 
   try {
@@ -419,7 +473,8 @@ async function displayCitationsFromSlide() {
               list.appendChild(listItem);
             });
 
-            outputElement.replaceChildren(header, list);
+            // Atomic replacement prevents duplicate sections if multiple async calls complete out-of-order
+            (outputElement as HTMLElement).replaceChildren(header, list);
           } else {
             outputElement.textContent = "No Zotero citations found on this slide.";
           }
@@ -433,6 +488,7 @@ async function displayCitationsFromSlide() {
     });
   } catch (error) {
     console.error("Error displaying citations from slide:", error);
+    // Avoid overwriting an important message if this fails in the background.
     if (outputElement.innerHTML === "") {
       outputElement.textContent = "Could not load citations for this slide.";
     }
@@ -487,7 +543,7 @@ async function addBibliographySlide(bibliographyText) {
       return;
     }
 
-    const newSlideOptions = {
+    const newSlideOptions: PowerPoint.AddSlideOptions = {
       layoutId: layoutId
     };
 
@@ -526,19 +582,19 @@ async function addBibliographySlide(bibliographyText) {
     for (const shape of newSlide.shapes.items) {
       const name = (shape.name || "").toLowerCase();
       if (!titleShape && name.includes("title")) {
-      titleShape = shape;
+        titleShape = shape;
       } else if (!contentShape && name.includes("content")) {
-      contentShape = shape;
+        contentShape = shape;
       }
     }
 
     // If no title shape found, create one
     if (!titleShape) {
       titleShape = newSlide.shapes.addTextBox("References", {
-      left: 50,
-      top: 50,
-      width: 860,
-      height: 100
+        left: 50,
+        top: 50,
+        width: 860,
+        height: 100
       });
     }
     titleShape.textFrame.textRange.text = "References";
@@ -547,10 +603,10 @@ async function addBibliographySlide(bibliographyText) {
     // If no content shape found, create one
     if (!contentShape) {
       contentShape = newSlide.shapes.addTextBox(trimmedBibliographyText, {
-      left: 50,
-      top: 150,
-      width: 860,
-      height: 350
+        left: 50,
+        top: 150,
+        width: 860,
+        height: 350
       });
     } else {
       contentShape.textFrame.textRange.text = trimmedBibliographyText;
@@ -561,4 +617,3 @@ async function addBibliographySlide(bibliographyText) {
     await context.sync();
   });
 }
-

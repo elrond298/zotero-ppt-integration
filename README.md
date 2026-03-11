@@ -33,6 +33,49 @@ Before you begin, ensure you have the following software installed and running:
 3.  Search for "Script Lab" and click **Add**.
 4.  Once installed, you will see a new **Script Lab** tab in the PowerPoint ribbon.
 
+---
+
+## 2a. Alternative: Use the Node.js Add-on (No Script Lab Required)
+
+If you prefer a more integrated solution, you can use the Node.js add-on provided in the `zotero-addon` folder. This method does **not** require Script Lab and provides both the Office Add-in and the backend server in one package.
+
+### Prerequisites
+
+* Node.js (v16 or higher recommended). Download from [nodejs.org](https://nodejs.org/).
+* Zotero and Better BibTeX for Zotero (see step 1).
+
+### Installation & Setup
+
+1. Open a terminal and navigate to the `zotero-addon` directory:
+
+    ```bash
+    cd zotero-addon
+    npm install
+    ```
+
+2. Start the server and add-in:
+
+    ```bash
+    npm start
+    ```
+
+3. The add-in and server will start and listen on `http://localhost:8000` (or the port specified in your configuration).
+
+4. Powerpoint should open automatically with the add-on open.
+
+**Important**: The Node.js server must remain running in the background whenever you use the PowerPoint add-in.
+
+### Configuration
+
+* The Node.js server exposes endpoints compatible with the add-in, such as `/zotero` and `/bibliography`.
+
+### Troubleshooting
+
+* If you encounter issues, check the terminal output for errors.
+* Ensure Zotero and Better BibTeX are running and accessible.
+
+---
+
 ## 3. Create the Add-in Snippet
 
 Now, you will copy the project files into a new Script Lab snippet.
@@ -149,6 +192,56 @@ The add-in cannot talk to Zotero directly due to browser security policies (CORS
 5.  You should see a message like `Proxy server running on http://localhost:8000`.
 
 **Important**: This server must remain running in the background whenever you are using the PowerPoint add-in.
+
+
+## 4a. Run the Node.js Server (Alternative)
+
+You can also run the backend server using Node.js. This is useful if you prefer a one
+
+### Prerequisites
+
+* Node.js (v16 or higher recommended). Download from [nodejs.org](https://nodejs.org/).
+* Install dependencies:
+
+    ```bash
+    cd zotero-addon
+    npm install
+    ```
+
+### Running the Node.js Server
+
+1.  Navigate to the `zotero-addon` directory:
+
+    ```bash
+    cd zotero-addon
+    ```
+
+2.  Start the server (make sure any required environment variables are set):
+
+    ```bash
+    npm start
+    ```
+
+    Or, if you have a custom script, use:
+
+    ```bash
+    npm run server
+    ```
+
+3.  The server should start and listen on `http://localhost:8000` (or the port specified in your configuration).
+
+**Important**: The Node.js server must remain running in the background whenever you use the PowerPoint add-in.
+
+### Configuration
+
+* The Node.js server should expose endpoints compatible with the add-in, such as `/zotero` and `/bibliography`.
+* You may need to configure CORS and API keys depending on your environment.
+
+### Troubleshooting
+
+* If you encounter issues, check the terminal output for errors.
+* Ensure Zotero and Better BibTeX are running and accessible.
+* Verify that the server is listening on the correct port and endpoints.
 
 ## 5. Using the Add-in
 
