@@ -1,334 +1,199 @@
-# PowerPoint Zotero Integration Add-in
+# PowerPoint Zotero Integration
 
-This project provides a simple [Script Lab](https://aka.ms/scriptlab)-based add-in for Microsoft PowerPoint. It allows you to connect to your running Zotero instance to insert in-text citations and generate a complete bibliography on a new slide.
+This project connects Microsoft PowerPoint to Zotero through Better BibTeX. It supports two usage modes:
 
-The add-in works by communicating with a local Python server, which in turn communicates with the [Better BibTeX for Zotero](https://retorque.re/zotero-better-bibtex/) (BBT) plugin.
+- A sideloaded Office add-in in `zotero-addon/`
+- A Script Lab snippet using the root `index.html`, `style.css`, and `script.js`
 
-## Features
+Core features:
 
-*   **Add In-Text Citations**: Pull up the Zotero citation picker directly from PowerPoint to insert formatted citations like `(Author, Year)` onto your slides.
-*   **Track Citations per Slide**: The add-in stores citation keys in the metadata of each slide, keeping your references organized.
-*   **Manage Slide Citations**: View a list of all citations on the currently selected slide and remove any that are no longer needed.
-*   **Generate Bibliography**: Automatically collect all unique citations from your entire presentation and generate a formatted bibliography on a new, dedicated "References" slide.
+- Insert in-text citations into slides
+- Track citation keys in slide metadata
+- View and remove stored citation keys per slide
+- Generate a bibliography slide from all cited items in the presentation
 
-## Shared Source Workflow
+## 1. Usage with npm as a sideload addon
 
-The repository contains two frontends that expose the same Zotero workflow:
+Use this mode if you want the standalone Office add-in rather than Script Lab.
 
-*   The Script Lab version at the repository root (`index.html`, `style.css`, `script.js`)
-*   The standalone Office add-in in `zotero-addon/`
+### Prerequisites
 
-To avoid manually keeping the business logic in sync, the shared code now lives in these files:
+1. Install Zotero and keep it running.
+2. Install Better BibTeX for Zotero.
+3. Install Node.js.
+4. Install Python 3. The current `npm start` flow also launches the local Python proxy.
 
-*   `shared/frontend_core.js`: single source of truth for the PowerPoint/Zotero frontend logic
-*   `shared/zotero_proxy_server.py`: single source of truth for the Python proxy server behavior
+Better BibTeX installation:
 
-The following files are now generated or wrapped from those shared sources:
+1. Download the latest `.xpi` from the Better BibTeX release page.
+2. In Zotero, open `Tools > Add-ons`.
+3. Use the gear menu and choose `Install Add-on From File...`.
+4. Restart Zotero.
 
-*   `script.js`
-*   `zotero-addon/src/taskpane/taskpane.ts`
-*   `server.py`
-*   `zotero-addon/server/server.py`
+### Install and start
 
-### Editing Rules
-
-*   Do **not** edit `script.js` directly.
-*   Do **not** edit `zotero-addon/src/taskpane/taskpane.ts` directly.
-*   For frontend behavior changes, edit `shared/frontend_core.js` and then regenerate both frontend entry files.
-*   For backend proxy behavior changes, edit `shared/zotero_proxy_server.py`.
-
-### Regenerating Shared Frontend Files
-
-After changing `shared/frontend_core.js`, run:
-
-```bash
-python tools/sync_shared.py
-```
-
-If you are using the local virtual environment on Windows, the exact command is:
+From the repository root:
 
 ```powershell
-c:/Users/ck/Documents/zotero-ppt-integration/.venv/Scripts/python.exe tools/sync_shared.py
+cd zotero-addon
+npm install
+npm start
 ```
 
-This regenerates:
+What `npm start` does today:
 
-*   `script.js`
-*   `zotero-addon/src/taskpane/taskpane.ts`
+- Starts the webpack dev server
+- Starts the local proxy server with `uv run python server/server.py`
+- Sideloads the add-in into PowerPoint desktop
+
+If you want the debugger attached, use:
+
+```powershell
+cd zotero-addon
+npm run start:debug
+```
+
+To stop the sideloaded add-in session:
+
+```powershell
+cd zotero-addon
+npm run stop
+```
+
+### How to use the add-in
+
+1. Open PowerPoint with the task pane loaded.
+2. Select a slide.
+3. Click `Add Citation (Pop up)` to open the Zotero picker.
+4. Click `Add Citation (Selected)` to cite the currently selected Zotero item(s) directly.
+5. Use the bibliography style selector to choose the output format.
+6. Click `Generate Bibliography` to create a `References` slide from all stored citation keys.
+
+### Notes
+
+- The add-in reads and writes citation keys from slide metadata, not from slide text alone.
+- If you remove citation text manually, remove the corresponding stored key from the task pane as well if you do not want it included in the bibliography.
+- The task pane status indicator reflects whether the local proxy is reachable.
+
+## 2. Usage with ScriptLab
+
+Use this mode if you want to run the integration as a Script Lab snippet instead of a standalone add-in.
+
+### Prerequisites
+
+1. Install Zotero and Better BibTeX.
+2. Install Python 3.
+3. Install Script Lab inside PowerPoint.
+
+Install Script Lab:
+
+1. Open PowerPoint.
+2. Go to `Insert > Get Add-ins`.
+3. Search for `Script Lab` and install it.
+
+### Start the local proxy
+
+From the repository root:
+
+```powershell
+python server.py
+```
+
+Keep this process running while using the snippet.
+
+### Load the Script Lab snippet
+
+1. Open Script Lab in PowerPoint.
+2. Create a new snippet.
+3. Copy these files into the matching tabs:
+
+- `index.html` -> HTML
+- `style.css` -> CSS
+- `script.js` -> Script
+
+No extra libraries are required.
+
+### How to use the snippet
+
+1. Run the snippet.
+2. Select a slide.
+3. Use `Add Citation (Pop up)` or `Add Citation (Selected)`.
+4. Choose a bibliography style from the selector.
+5. Click `Generate Bibliography` when you are ready to build the references slide.
+
+### Notes
+
+- Script Lab uses the same frontend logic as the standalone add-in.
+- The local proxy is still required because the Office webview cannot reliably talk directly to Better BibTeX on `127.0.0.1:23119`.
+
+## 3. Development notes
+
+### Repository structure
+
+- Root files `index.html`, `style.css`, and `script.js` are for Script Lab usage.
+- `zotero-addon/` contains the standalone Office add-in.
+- `shared/frontend_core.js` is the single source of truth for frontend behavior.
+- `shared/zotero_proxy_server.py` is the single source of truth for the local proxy behavior.
+
+### Generated and wrapped files
+
+These files should not be treated as primary edit targets:
+
+- `script.js`
+- `zotero-addon/src/taskpane/taskpane.ts`
+- `server.py`
+- `zotero-addon/server/server.py`
+
+For frontend behavior changes, edit `shared/frontend_core.js` and regenerate the outputs.
+
+For backend proxy changes, edit `shared/zotero_proxy_server.py`.
+
+### Regenerating shared frontend files
+
+From the repository root:
+
+```powershell
+python.exe tools/sync_shared.py
+```
+
+This updates:
+
+- `script.js`
+- `zotero-addon/src/taskpane/taskpane.ts`
 
 ### Validation
 
-Recommended checks after shared-layer changes:
+Python validation:
 
-```bash
+```powershell
 python -m py_compile server.py zotero-addon/server/server.py shared/zotero_proxy_server.py tools/sync_shared.py
-cd zotero-addon && npm run build
 ```
 
-## 1. Pre-requisites
+Add-in build validation:
 
-Before you begin, ensure you have the following software installed and running:
-
-1.  **Zotero**: The Zotero desktop application must be installed and running in the background. You can download it from [zotero.org](https://www.zotero.org/).
-2.  **Better BibTeX for Zotero (BBT)**: This essential Zotero plugin provides the local API that the add-in communicates with.
-    *   Go to the [latest BBT release page](https://github.com/retorquere/zotero-better-bibtex/releases/latest).
-    *   Download the `.xpi` file.
-    *   In Zotero, go to `Tools > Add-ons`, click the gear icon ⚙️, and select "Install Add-on From File..." to install the downloaded `.xpi` file.
-    *   Restart Zotero.
-
-3.  **Python 3**: The backend server is a Python script. Make sure you have Python 3 installed on your system. You can download it from [python.org](https://www.python.org/downloads/).
-
-## 2. Install the Script Lab Add-in
-
-[Script Lab](https://aka.ms/scriptlab) is a fantastic tool for developing and running Office Add-ins directly within the Office application.
-
-1.  Open **PowerPoint**.
-2.  Go to the **Insert** tab and click **Get Add-ins**.
-3.  Search for "Script Lab" and click **Add**.
-4.  Once installed, you will see a new **Script Lab** tab in the PowerPoint ribbon.
-
----
-
-## 2a. Alternative: Use the Node.js Add-on (No Script Lab Required)
-
-If you prefer a more integrated solution, you can use the Node.js add-on provided in the `zotero-addon` folder. This method does **not** require Script Lab and provides both the Office Add-in and the backend server in one package.
-
-### Prerequisites
-
-* Node.js (v16 or higher recommended). Download from [nodejs.org](https://nodejs.org/).
-* Zotero and Better BibTeX for Zotero (see step 1).
-
-### Installation & Setup
-
-1. Open a terminal and navigate to the `zotero-addon` directory:
-
-    ```bash
-    cd zotero-addon
-    npm install
-    ```
-
-2. Start the server and add-in:
-
-    ```bash
-    npm start
-    ```
-
-3. The add-in and server will start and listen on `http://localhost:8000` (or the port specified in your configuration).
-
-4. Powerpoint should open automatically with the add-on open.
-
-**Important**: The Node.js server must remain running in the background whenever you use the PowerPoint add-in.
-
-### Configuration
-
-* The Node.js server exposes endpoints compatible with the add-in, such as `/zotero` and `/bibliography`.
-
-### Troubleshooting
-
-* If you encounter issues, check the terminal output for errors.
-* Ensure Zotero and Better BibTeX are running and accessible.
-
----
-
-## 3. Create the Add-in Snippet
-
-Now, you will copy the project files into a new Script Lab snippet.
-
-1.  Go to the **Script Lab** tab and click **Code**. This will open the Script Lab task pane.
-2.  Click the menu icon (☰) in the top left of the task pane and select **New**.
-3.  You will see several tabs: `Script`, `HTML`, `CSS`, and `Libraries`. You need to copy and paste the contents of the provided files into the corresponding tabs.
-
-#### a. HTML Tab
-
-Copy the entire content of `index.html` and paste it into the **HTML** tab, replacing any existing content.
-
-```html
-<button id="add-citation" class="ms-Button">
-		<span class="ms-Button-label">Add Citation</span>
-</button>
-<button id="generate-bibliography" class="ms-Button">
-    <span class="ms-Button-label">Generate Bibliography</span>
-</button>
-<!-- Changed from <pre> to <div> to hold interactive list -->
-<div id="output"></div>
+```powershell
+cd zotero-addon
+npm run build
 ```
 
-#### b. CSS Tab
+Manifest validation:
 
-Copy the entire content of `style.css` and paste it into the **CSS** tab.
-
-```css
-section.samples {
-    margin-top: 20px;
-}
-
-section.samples .ms-Button, section.setup .ms-Button {
-    display: block;
-    margin-bottom: 5px;
-    margin-left: 20px;
-    min-width: 80px;
-}
-
-#output p {
-    margin-bottom: 5px;
-    font-weight: bold;
-}
-
-#output ul {
-    list-style-type: none;
-    padding-left: 0;
-    margin-top: 5px;
-}
-
-#output li {
-    display: flex;
-    align-items: center;
-    margin-bottom: 4px;
-    font-family: Consolas, monaco, monospace;
-    font-size: 14px;
-}
-
-.remove-btn {
-    background-color: #f44336; /* Red */
-    color: white;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    width: 20px;
-    height: 20px;
-    font-size: 14px;
-    line-height: 20px;
-    text-align: center;
-    margin-right: 8px;
-    padding: 0;
-    font-weight: bold;
-    flex-shrink: 0; /* Prevents the button from shrinking */
-}
-
-.remove-btn:hover {
-    background-color: #d32f2f; /* Darker red */
-}
+```powershell
+cd zotero-addon
+npm run validate
 ```
 
-#### c. Script Tab
+### Implementation notes
 
-Copy the entire content of `script.js` and paste it into the **Script** tab.
+- The frontend calls the local proxy on `http://localhost:8000`.
+- `/zotero` proxies Better BibTeX CAYW calls.
+- `/bibliography` proxies Better BibTeX JSON-RPC bibliography generation.
+- `/health` is used by the UI status indicator.
+- Bibliography output is based on citation keys stored in slide metadata.
 
-```javascript
-// --- Configuration ---
-const PROXY_ENDPOINT = "http://localhost:8000/zotero";
-const BIB_ENDPOINT = "http://localhost:8000/bibliography";
-const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS"; // Key for storing citation data in slide's custom properties
+### Useful links
 
-// --- Office.onReady Initialization ---
-// ... (rest of the script.js file) ...
-```
-
-#### d. Libraries Tab
-
-This project does not require any external libraries, so you can leave the **Libraries** tab empty.
-
-Finally, give your snippet a name by clicking on "Untitled Snippet" at the top of the pane.
-
-## 4. Run the Python Server
-
-The add-in cannot talk to Zotero directly due to browser security policies (CORS). This Python script acts as a simple local server to bridge the communication.
-
-1.  Save the Python code into a file named `server.py` on your computer.
-2.  Open a terminal or command prompt.
-3.  Navigate to the directory where you saved `server.py`.
-4.  Run the server with the following command:
-
-    ```bash
-    python server.py
-    ```
-
-5.  You should see a message like `Proxy server running on http://localhost:8000`.
-
-**Important**: This server must remain running in the background whenever you are using the PowerPoint add-in.
-
-
-## 4a. Run the Node.js Server (Alternative)
-
-You can also run the backend server using Node.js. This is useful if you prefer a one
-
-### Prerequisites
-
-* Node.js (v16 or higher recommended). Download from [nodejs.org](https://nodejs.org/).
-* Install dependencies:
-
-    ```bash
-    cd zotero-addon
-    npm install
-    ```
-
-### Running the Node.js Server
-
-1.  Navigate to the `zotero-addon` directory:
-
-    ```bash
-    cd zotero-addon
-    ```
-
-2.  Start the server (make sure any required environment variables are set):
-
-    ```bash
-    npm start
-    ```
-
-    Or, if you have a custom script, use:
-
-    ```bash
-    npm run server
-    ```
-
-3.  The server should start and listen on `http://localhost:8000` (or the port specified in your configuration).
-
-**Important**: The Node.js server must remain running in the background whenever you use the PowerPoint add-in.
-
-### Configuration
-
-* The Node.js server should expose endpoints compatible with the add-in, such as `/zotero` and `/bibliography`.
-* You may need to configure CORS and API keys depending on your environment.
-
-### Troubleshooting
-
-* If you encounter issues, check the terminal output for errors.
-* Ensure Zotero and Better BibTeX are running and accessible.
-* Verify that the server is listening on the correct port and endpoints.
-
-## 5. Using the Add-in
-
-With the server running and the snippet set up in Script Lab, you are ready to use the add-in.
-
-1.  In the Script Lab task pane, click the **Run** button (▶).
-2.  The add-in interface with the "Add Citation" and "Generate Bibliography" buttons will appear in the task pane.
-
-#### Adding a Citation
-
-1.  Click on a slide where you want to add a citation. If your cursor is inside a text box, the citation will be appended there. Otherwise, a new text box will be created.
-2.  Click the **Add Citation** button in the add-in pane.
-3.  The Zotero citation picker window will appear. Search for and select the reference(s) you want to cite.
-4.  Press Enter. The formatted in-text citation will be added to your slide.
-
-#### Generating the Bibliography
-
-1.  After adding all your citations throughout the presentation, click the **Generate Bibliography** button.
-2.  The add-in will scan every slide, collect all unique citation keys, and request a formatted bibliography from Zotero.
-3.  A new slide titled "References" will be created at the end of your presentation containing the full bibliography.
-
-## 6. Managing Citations
-
-The add-in provides a simple way to see and manage the citations associated with each slide.
-
-*   **Viewing Citations**: When you select a slide, the add-in pane will automatically update to show a list of all Zotero citation keys stored on that slide (e.g., `correia2021`, `doeEtAl2023`).
-*   **Removing a Citation**: If you delete a citation from the slide text, its key will still be stored in the slide's metadata. To remove it completely (so it doesn't appear in the bibliography), click the red **×** button next to the citation key in the add-in pane. This will remove the key from the slide's metadata.
-*  **Bibliography is generated based on metadata alone**, delete citations manually if necessary.
-
-This ensures that your final bibliography is always accurate and reflects only the citations present in your presentation.
-
-## 7. Useful links
-https://retorque.re/zotero-better-bibtex/citing/cayw
-https://retorque.re/zotero-better-bibtex/exporting/json-rpc/index.html
-https://www.zotero.org/support/dev/web_api/v3/basics
-https://learn.microsoft.com/en-us/javascript/api/powerpoint
+- https://retorque.re/zotero-better-bibtex/citing/cayw
+- https://retorque.re/zotero-better-bibtex/exporting/json-rpc/index.html
+- https://www.zotero.org/support/dev/web_api/v3/basics
+- https://learn.microsoft.com/en-us/javascript/api/powerpoint
