@@ -120,6 +120,25 @@ h1 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
 
 .ms-Button.primary { --btn-bg: var(--c-accent); --btn-bg-hover: var(--c-accent-hover); --btn-bg-active: var(--c-accent-active); --btn-text: #fff; --btn-border: var(--c-accent-active); color: #fff; }
 
+.ms-Button.secondary {
+    --btn-bg: color-mix(in srgb, var(--c-accent) 18%, var(--c-bg-alt));
+    --btn-bg-hover: color-mix(in srgb, var(--c-accent) 28%, var(--c-bg-alt));
+    --btn-bg-active: color-mix(in srgb, var(--c-accent) 36%, var(--c-bg-alt));
+    --btn-border: color-mix(in srgb, var(--c-accent) 30%, var(--c-border));
+}
+
+.ms-Button.accent {
+    --btn-bg: color-mix(in srgb, #107c10 24%, var(--c-bg-alt));
+    --btn-bg-hover: color-mix(in srgb, #107c10 34%, var(--c-bg-alt));
+    --btn-bg-active: color-mix(in srgb, #107c10 42%, var(--c-bg-alt));
+    --btn-border: color-mix(in srgb, #107c10 36%, var(--c-border));
+}
+
+.ms-Button-label {
+    display: inline-flex;
+    align-items: center;
+}
+
 .ms-Button:hover:not(:disabled) { background: var(--btn-bg-hover); text-decoration: none; }
 .ms-Button:active:not(:disabled) { background: var(--btn-bg-active); transform: translateY(1px); }
 .ms-Button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }

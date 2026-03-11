@@ -11,6 +11,60 @@ The add-in works by communicating with a local Python server, which in turn comm
 *   **Manage Slide Citations**: View a list of all citations on the currently selected slide and remove any that are no longer needed.
 *   **Generate Bibliography**: Automatically collect all unique citations from your entire presentation and generate a formatted bibliography on a new, dedicated "References" slide.
 
+## Shared Source Workflow
+
+The repository contains two frontends that expose the same Zotero workflow:
+
+*   The Script Lab version at the repository root (`index.html`, `style.css`, `script.js`)
+*   The standalone Office add-in in `zotero-addon/`
+
+To avoid manually keeping the business logic in sync, the shared code now lives in these files:
+
+*   `shared/frontend_core.js`: single source of truth for the PowerPoint/Zotero frontend logic
+*   `shared/zotero_proxy_server.py`: single source of truth for the Python proxy server behavior
+
+The following files are now generated or wrapped from those shared sources:
+
+*   `script.js`
+*   `zotero-addon/src/taskpane/taskpane.ts`
+*   `server.py`
+*   `zotero-addon/server/server.py`
+
+### Editing Rules
+
+*   Do **not** edit `script.js` directly.
+*   Do **not** edit `zotero-addon/src/taskpane/taskpane.ts` directly.
+*   For frontend behavior changes, edit `shared/frontend_core.js` and then regenerate both frontend entry files.
+*   For backend proxy behavior changes, edit `shared/zotero_proxy_server.py`.
+
+### Regenerating Shared Frontend Files
+
+After changing `shared/frontend_core.js`, run:
+
+```bash
+python tools/sync_shared.py
+```
+
+If you are using the local virtual environment on Windows, the exact command is:
+
+```powershell
+c:/Users/ck/Documents/zotero-ppt-integration/.venv/Scripts/python.exe tools/sync_shared.py
+```
+
+This regenerates:
+
+*   `script.js`
+*   `zotero-addon/src/taskpane/taskpane.ts`
+
+### Validation
+
+Recommended checks after shared-layer changes:
+
+```bash
+python -m py_compile server.py zotero-addon/server/server.py shared/zotero_proxy_server.py tools/sync_shared.py
+cd zotero-addon && npm run build
+```
+
 ## 1. Pre-requisites
 
 Before you begin, ensure you have the following software installed and running:
