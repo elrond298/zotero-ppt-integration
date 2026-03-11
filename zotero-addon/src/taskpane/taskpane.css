@@ -89,9 +89,22 @@ h1 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
 .status.ok { color: var(--c-accent); }
 .status.error { color: var(--c-danger); }
 
-.actions { display: flex; margin-bottom: 14px; }
-.actions button { min-width: 120px; margin-right: 8px; }
-.actions button:last-child { margin-right: 0; }
+.actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.actions button {
+    min-width: 0;
+    width: 100%;
+    margin-right: 0;
+}
+
+.actions button:last-child {
+    grid-column: 1 / -1;
+}
 
 /* Buttons */
 .ms-Button {
