@@ -9,7 +9,7 @@
   "config": {
     "app_to_debug": "powerpoint",
     "app_type_to_debug": "desktop",
-    "dev_server_port": 3000
+    "dev_server_port": 23000
   },
   "scripts": {
     "build": "webpack --mode production",
@@ -20,8 +20,9 @@
     "prettier": "office-addin-lint prettier",
     "signin": "office-addin-dev-settings m365-account login",
     "signout": "office-addin-dev-settings m365-account logout",
-  "prestart": "office-addin-dev-certs install",
-  "start": "concurrently -n WEB,PY,ADDIN -c green,magenta,cyan \"npm:dev-server\" \"python server/server.py\" \"office-addin-debugging start manifest.xml\"",
+    "prestart": "office-addin-dev-certs install",
+    "start": "concurrently -n WEB,PY,ADDIN -c green,magenta,cyan \"npm:dev-server\" \"uv run python server/server.py\" \"office-addin-debugging start manifest.xml desktop --app powerpoint --no-debug\"",
+    "start:debug": "concurrently -n WEB,PY,ADDIN -c green,magenta,cyan \"npm:dev-server\" \"uv run python server/server.py\" \"office-addin-debugging start manifest.xml desktop --app powerpoint\"",
     "stop": "office-addin-debugging stop manifest.xml",
     "validate": "office-addin-manifest validate manifest.xml",
     "watch": "webpack --mode development --watch"
@@ -56,8 +57,8 @@
     "typescript": "^5.4.2",
     "webpack": "^5.95.0",
     "webpack-cli": "^5.1.4",
-  "webpack-dev-server": "5.1.0",
-  "concurrently": "^9.0.0"
+    "webpack-dev-server": "5.1.0",
+    "concurrently": "^9.0.0"
   },
   "prettier": "office-addin-prettier-config",
   "browserslist": [
