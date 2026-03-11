@@ -156,7 +156,7 @@ async function handleGenerateBibliography() {
 function formatSingleCitation(item) {
   const creators = item.item.creators;
   const date = item.item.date || "";
-  const year = date.substring(0, 4) || "n.d."; // n.d. for "no date"
+  const year = extractYearFromDate(date);
 
   let authorString = "Unknown Author";
   if (creators && creators.length > 0) {
@@ -169,6 +169,42 @@ function formatSingleCitation(item) {
     }
   }
   return `${authorString}, ${year}`;
+}
+
+/**
+ * Attempts to robustly extract a 4-digit publication year from a Zotero date string.
+ * Zotero dates can appear in many formats, e.g.:
+ *  - 2024-09-08
+ *  - 2024-09
+ *  - 2024
+ *  - September 8, 2024
+ *  - 8 Sep 2024
+ *  - 08/09/2024 or 09/08/2024
+ *  - 2024 (Spring)
+ * If multiple 4-digit years appear, the first is typically the publication year.
+ * Falls back to JavaScript Date parsing if regex fails, otherwise returns 'n.d.'.
+ * @param {string} dateStr
+ * @returns {string} 4-digit year or 'n.d.'
+ */
+function extractYearFromDate(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return 'n.d.';
+
+  // Common case: starts with YYYY-
+  const isoMatch = /^(\d{4})[-/]/.exec(dateStr);
+  if (isoMatch) return isoMatch[1];
+
+  // General search for any plausible 4-digit year 1500-2099 (broad enough for most scholarly works)
+  const yearMatch = /(1[5-9]\d{2}|20\d{2})/.exec(dateStr);
+  if (yearMatch) return yearMatch[1];
+
+  // Try Date parsing as a last resort (may misinterpret ambiguous day/month, but we only need year)
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    const yr = parsed.getFullYear();
+    if (yr > 1500 && yr < 2100) return String(yr);
+  }
+
+  return 'n.d.';
 }
 
 /**
@@ -419,8 +455,55 @@ async function displayCitationsFromSlide() {
  * @param bibliographyText The string content for the bibliography.
  */
 async function addBibliographySlide(bibliographyText) {
+  // Remove trailing newline(s) and extra spaces
+  const trimmedBibliographyText = bibliographyText.replace(/\s+$/, '');
+
   await PowerPoint.run(async function (context) {
-    context.presentation.slides.add();
+    // 2) Load masters
+    const slideMasters = context.presentation.slideMasters;
+    slideMasters.load("items");
+    await context.sync();
+
+    // 3) Load each master's layouts collection
+    slideMasters.items.forEach((m) => m.layouts.load("items"));
+    await context.sync();
+
+    // 4) Load the props we need on every layout (avoid 'type' to prevent PropertyNotLoaded)
+    slideMasters.items.forEach((m) =>
+      m.layouts.items.forEach((layout) => layout.load("id,name"))
+    );
+    await context.sync();
+
+    // (Optional) Log all layout names/ids to help debugging
+    // slideMasters.items.forEach((m) => {
+    //   m.layouts.items.forEach((l) => {
+    //     console.log(`Layout: "${l.name}"  |  id: ${l.id}`);
+    //   });
+    // });
+
+    // 5) Find "Title and Content" by name (robust case-insensitive check)
+    let layoutId = null;
+    outer: for (const master of slideMasters.items) {
+      for (const layout of master.layouts.items) {
+        const n = (layout.name || "").toLowerCase();
+        if (n === "title and content" || (n.includes("title") && n.includes("content"))) {
+          layoutId = layout.id;
+          break outer;
+        }
+      }
+    }
+
+    if (!layoutId) {
+      console.log('Could not find a layout named "Title and Content". Check console output above for available names/ids.');
+      return;
+    }
+
+    const newSlideOptions: PowerPoint.AddSlideOptions = {
+      layoutId: layoutId
+    };
+
+    // 3) Insert new slide using layoutId at the same index
+    context.presentation.slides.add(newSlideOptions);
     await context.sync();
 
     // The index for the new slide will be the current number of slides.
@@ -430,33 +513,62 @@ async function addBibliographySlide(bibliographyText) {
     // Get the newly added slide by its index.
     context.presentation.load("slides");
     await context.sync();
-    const newSlide = context.presentation.slides.getItemAt(newSlideIndex.value-1);
+    const newSlide = context.presentation.slides.getItemAt(newSlideIndex.value - 1);
     newSlide.load("id");
     await context.sync();
     // No need to load 'id' here unless you specifically need it later.
     // Operations on the slide object will work without loading a property first.
 
-    // Add a title
-    const titleShape = newSlide.shapes.addTextBox("References", {
+    // Add the bibliography content
+    // Try to find existing shapes for title and content
+    let titleShape = null;
+    let contentShape = null;
+
+    // Load all shapes on the new slide
+    newSlide.shapes.load("items");
+    await context.sync();
+
+    // Try to find a shape with 'title' in its name (case-insensitive)
+    for (const shape of newSlide.shapes.items) {
+      shape.load("name");
+    }
+    await context.sync();
+
+    for (const shape of newSlide.shapes.items) {
+      const name = (shape.name || "").toLowerCase();
+      if (!titleShape && name.includes("title")) {
+      titleShape = shape;
+      } else if (!contentShape && name.includes("content")) {
+      contentShape = shape;
+      }
+    }
+
+    // If no title shape found, create one
+    if (!titleShape) {
+      titleShape = newSlide.shapes.addTextBox("References", {
       left: 50,
       top: 50,
       width: 860,
       height: 100
-    });
+      });
+    }
+    titleShape.textFrame.textRange.text = "References";
     titleShape.textFrame.textRange.font.size = 44;
 
-    // Add the bibliography content
-    const contentShape = newSlide.shapes.addTextBox(bibliographyText, {
+    // If no content shape found, create one
+    if (!contentShape) {
+      contentShape = newSlide.shapes.addTextBox(trimmedBibliographyText, {
       left: 50,
       top: 150,
       width: 860,
       height: 350
-    });
+      });
+    } else {
+      contentShape.textFrame.textRange.text = trimmedBibliographyText;
+    }
     contentShape.textFrame.textRange.font.size = 14;
-    // Allow the text box to resize vertically to fit all the content
     contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
 
-    // Sync all the queued changes (add slide, add text boxes, format text).
     await context.sync();
   });
 }
