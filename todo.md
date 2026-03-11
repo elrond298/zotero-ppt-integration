@@ -9,3 +9,6 @@
     - perhaps, use an auto-exported bibtex file to generate the bibliography
 4. migrate to a standalone office addin
 5. get rid of external python server, perhaps a node.js server?
+
+- [ ] Better icons/author credits
+- [ ] Publishing to Microsoft AppSource. See [instructions](https://learn.microsoft.com/en-us/office/dev/add-ins/publish/publish) for details.
