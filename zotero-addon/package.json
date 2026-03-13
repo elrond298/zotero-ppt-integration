@@ -21,8 +21,8 @@
     "signin": "office-addin-dev-settings m365-account login",
     "signout": "office-addin-dev-settings m365-account logout",
     "prestart": "office-addin-dev-certs install",
-    "start": "concurrently -n WEB,PY,ADDIN -c green,magenta,cyan \"npm:dev-server\" \"uv run python server/server.py\" \"office-addin-debugging start manifest.xml desktop --app powerpoint --no-debug\"",
-    "start:debug": "concurrently -n WEB,PY,ADDIN -c green,magenta,cyan \"npm:dev-server\" \"uv run python server/server.py\" \"office-addin-debugging start manifest.xml desktop --app powerpoint\"",
+    "start": "concurrently -n WEB,PY,ADDIN -c green,magenta,cyan \"npm:dev-server\" \"uv run python server/server.py\" \"echo y | office-addin-debugging start manifest.xml desktop --app powerpoint --no-debug\"",
+    "start:debug": "concurrently -n WEB,PY,ADDIN -c green,magenta,cyan \"npm:dev-server\" \"uv run python server/server.py\" \"echo y | office-addin-debugging start manifest.xml desktop --app powerpoint\"",
     "stop": "office-addin-debugging stop manifest.xml",
     "validate": "office-addin-manifest validate manifest.xml",
     "watch": "webpack --mode development --watch"
