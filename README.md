@@ -34,6 +34,11 @@ Better BibTeX installation:
 
 From the repository root:
 
+enable edgeview loopback first as *admin*:
+```powershell
+npx office-addin-dev-settings appcontainer EdgeWebView --loopback
+```
+
 ```powershell
 cd zotero-addon
 npm install
