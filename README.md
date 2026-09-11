@@ -81,12 +81,11 @@ for reading the log).
 ### Notes
 
 - The add-in reads and writes citation keys from slide metadata, not from slide text alone.
-- Citations are written as plain text (`(Zuberi et al., 2001)`): PowerPoint has no field or marker
-  mechanism for a piece of text, and the invisible characters an earlier version used were shown by
-  PowerPoint, so they are no longer written. Decks that carry them are repaired as their citations are
-  removed or dropped. Whether a citation is still on a slide is therefore decided from its text: its
-  author and year (either may be reworded - `see`, `et al.`, a page number - and the key is kept), and
-  entries whose text is genuinely gone are dropped.
+- Citations are written as plain text (`(Zuberi et al., 2001)`), and each one is recorded on the text
+  box it was written into (`Shape.tags`, PowerPointApi 1.3) as well as on the slide. Whether a citation
+  is still there is decided from that record, not from its wording: editing the author, the year or the
+  rest of the text never drops the key, while a text box that is deleted or emptied drops the citations
+  it held. Citations from older decks have no record and are left alone - remove those with `x`.
 - Text and key are kept in step: deleting a citation's text from a slide drops its key (and the
   pane says which keys it dropped) the next time that slide is shown, while removing a key with the
   `x` button also deletes the citation's text - and tells you if the text was not found. A citation
