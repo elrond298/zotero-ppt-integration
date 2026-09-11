@@ -16,6 +16,8 @@ const DEFAULT_SPLIT_BIBLIOGRAPHY = true;
 /* Fallback when PowerPoint cannot report how tall the text is: about 112 characters fit per
    line and about 21 lines fit on a slide, so this leaves headroom. */
 const BIBLIOGRAPHY_CHARS_PER_SLIDE = 1600;
+/* Set to false the first time Slide.moveTo fails, so unsupported builds are not asked again. */
+let canMoveSlides = true;
 
 const LOG_LEVELS = {
   NONE: 0,
@@ -1095,13 +1097,23 @@ async function writeBibliographySlide(bibliography, splitAcrossSlides) {
       await fillBibliographySlide(context, targets[index], pages[index], title);
     }
 
-    // The bibliography belongs at the end of the deck, first page first.
+    // The bibliography belongs at the end of the deck, first page first - but Slide.moveTo throws a
+    // GeneralException on PowerPoint builds that do not support it (16.0.17932 on Windows does not),
+    // so it is attempted once and skipped afterwards instead of failing the whole run.
     slides.load("items");
     await context.sync();
-    const firstPosition = slides.items.length - targets.length + 1;
-    for (let index = 0; index < targets.length; index++) {
-      if (firstPosition + index >= 1) targets[index].moveTo(firstPosition + index);
+    if (canMoveSlides && targets.length > 0) {
+      const firstPosition = slides.items.length - targets.length + 1;
+      try {
+        for (let index = 0; index < targets.length; index++) {
+          if (firstPosition + index >= 1) targets[index].moveTo(firstPosition + index);
+        }
+        await context.sync();
+      } catch (error) {
+        canMoveSlides = false;
+        logWarn("This PowerPoint build cannot move slides; the bibliography stays where it is", error);
+        reportToHelper("slide.moveTo is not supported on this build" + describeError(error));
+      }
     }
-    await context.sync();
   });
 }

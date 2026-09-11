@@ -78,6 +78,9 @@ for reading the log).
 ### Notes
 
 - The add-in reads and writes citation keys from slide metadata, not from slide text alone.
+- Slide reordering uses `Slide.moveTo`, which some PowerPoint builds (16.0.17932 on Windows, for one)
+  reject with a GeneralException; when that happens the reordering is skipped and the bibliography
+  slides stay where they are, with a note in `server.log`.
 - The slides we generate are tagged (`ZOTERO_BIBLIOGRAPHY`, with the page number as the value), so
   generating again rewrites those slides instead of adding more, a slide titled `References` from an
   older version is adopted, continuation slides that are no longer needed are deleted, and the whole
