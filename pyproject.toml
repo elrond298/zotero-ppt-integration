@@ -1,7 +1,0 @@
-[project]
-name = "zotero-ppt-integration"
-version = "0.1.0"
-description = "Zotero citations and bibliographies in PowerPoint"
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = []

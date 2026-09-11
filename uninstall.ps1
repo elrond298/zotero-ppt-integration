@@ -22,7 +22,7 @@ $AddInId = "3bad9358-5068-4f44-b97d-c6dc509f510b"
 $DeveloperKey = "HKCU:\Software\Microsoft\Office\16.0\Wef\Developer"
 $ShortcutPath = Join-Path ([Environment]::GetFolderPath("Startup")) "Zotero Citations Server.lnk"
 
-$servers = Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" -ErrorAction SilentlyContinue |
+$servers = Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe' OR Name = 'ZoteroHelper.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like "*$InstallDir*" }
 foreach ($server in $servers) {
     Write-Host "Stopping helper server (PID $($server.ProcessId))"

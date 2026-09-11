@@ -2,7 +2,7 @@
 
 This project connects Microsoft PowerPoint to Zotero through Better BibTeX. It supports two usage modes:
 
-- A sideloaded Office add-in in `zotero-addon/` (installs without Node.js or npm)
+- A sideloaded Office add-in in `zotero-addon/` (installs without Node.js, npm or Python)
 - A Script Lab snippet using the root `index.html`, `style.css`, and `script.js`
 
 Core features:
@@ -18,11 +18,11 @@ Core features:
 
 1. Install Zotero and keep it running.
 2. Install Better BibTeX for Zotero.
-3. Install Python 3 — either from [python.org](https://www.python.org/downloads/) or with `winget install astral-sh.uv`.
-4. Have PowerPoint installed on Windows.
+3. Have PowerPoint installed on Windows.
 
-Node.js, npm and a build step are **not** required: the add-in is plain HTML/JavaScript, and the
-helper server below uses only the Python standard library.
+Nothing else: the local helper is a small C# program that `install.ps1` compiles with the C# compiler
+that ships with Windows (`csc.exe`), and it uses only the .NET Framework. No Node.js, no npm, no
+Python, no `pip`, no downloads.
 
 Better BibTeX installation:
 
@@ -48,14 +48,16 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File '\\wsl.localhost\<distro
 
 `install.ps1` does all of this, and can be re-run at any time to update the installed copy:
 
-- copies the add-in web files and the helper server into `%LOCALAPPDATA%\ZoteroCitations`
-- creates a trusted localhost certificate for `https://localhost:23000` (reused if it is still valid)
+- compiles `zotero-addon/helper/ZoteroHelper.cs` and installs it with the web files and the manifest
+  in `%LOCALAPPDATA%\ZoteroCitations`
+- creates a trusted localhost certificate for `https://localhost:23000` (reused while it is valid)
 - registers the add-in with PowerPoint (`HKCU:\Software\Microsoft\Office\16.0\Wef\Developer`)
-- adds a Start-up shortcut so the helper server runs at every logon and starts it right away
+- adds a Start-up shortcut (a hidden VBScript launcher) so the helper runs at every logon, and starts it now
 - checks that `https://localhost:23000/taskpane.html` answers, so failures are visible immediately
 
-Use `-NoAutostart` if you prefer to start the server by hand with
-`%LOCALAPPDATA%\ZoteroCitations\run-server.cmd`.
+Use `-NoAutostart` if you prefer to start the helper by hand with
+`%LOCALAPPDATA%\ZoteroCitations\run-server.cmd` (that one keeps a console window open, which is handy
+for reading the log).
 
 ### How to use the add-in
 
@@ -73,22 +75,30 @@ Use `-NoAutostart` if you prefer to start the server by hand with
 
 - The add-in reads and writes citation keys from slide metadata, not from slide text alone.
 - If you remove citation text manually, remove the corresponding stored key from the task pane as well if you do not want it included in the bibliography.
-- The task pane status indicator reflects whether the local helper server is reachable.
+- The task pane status indicator reflects whether the local helper is reachable.
+- The helper is two listeners in one process: the JSON API on `http://localhost:8000` and the pane
+  itself on `https://localhost:23000`. Office requires HTTPS for task panes, and Office's webview
+  cannot reach Better BibTeX directly.
 
 ### Troubleshooting
 
 - **The pane stays blank.** Read `%LOCALAPPDATA%\ZoteroCitations\server.log`, and open
   `https://localhost:23000/taskpane.html` in a browser to see what the add-in receives.
+- **"Proxy not running" in the pane.** The helper is not running: start
+  `%LOCALAPPDATA%\ZoteroCitations\run-server.cmd` (visible console with the same log) or re-run `install.ps1`.
+- **`FATAL: could not bind to port ...`** means another copy of the helper is already running.
+- **The pane stops loading after about a year.** The localhost certificate expired: re-run `install.ps1` to renew it.
 - **The add-in is not pinned to the Home tab.** Office keeps sideloaded (developer) add-ins in
   `Home > Add-ins` (加载项); starting it there opens the pane and adds the `Zotero Tools` group for that
   session. A permanently pinned button needs Microsoft's deployment path (AppSource or the Microsoft 365
-  admin center), which requires the add-in files to be hosted on a public HTTPS URL.
-- **"Proxy not running" in the pane.** The helper server is not running: start
-  `%LOCALAPPDATA%\ZoteroCitations\run-server.cmd` (visible console, useful for logs) or re-run `install.ps1`.
-- **`FATAL: Could not bind to port ...`** means another copy of the server is already running.
-- **The pane stops loading after about a year.** The localhost certificate expired: re-run `install.ps1` to renew it.
-- **The pane cannot reach anything at all** on some Office builds. Enable loopback for the Office
-  webview once, in an **elevated** PowerShell, and restart PowerPoint:
+  admin center), which requires the add-in files to be hosted on a public HTTPS URL - and a publicly
+  hosted pane could not reach this local helper anyway (WebView2 blocks public pages from calling
+  localhost). The deployment options were checked in detail: this Office is a volume licence without a
+  Microsoft 365 sign-in, and the Trust Center dialog only accepts HTTPS catalog URLs, so no local
+  deployment route exists.
+- **The pane cannot reach anything at all** on some Office builds, and the loopback exemption is missing.
+  That exemption was only needed for the old dev-server setup; if you hit it, enable loopback for the
+  Office webview once in an **elevated** PowerShell and restart PowerPoint:
 
   ```powershell
   npx office-addin-dev-settings appcontainer EdgeWebView --loopback
@@ -107,25 +117,13 @@ Use this mode if you want to run the integration as a Script Lab snippet instead
 ### Prerequisites
 
 1. Install Zotero and Better BibTeX.
-2. Install Python 3.
-3. Install Script Lab inside PowerPoint (`Insert > Get Add-ins`, search for `Script Lab`).
+2. Install Script Lab inside PowerPoint (`Insert > Get Add-ins`, search for `Script Lab`).
 
-### Start the local proxy
+### Start the local helper
 
-The helper server installed in step 1 already listens on `http://localhost:8000`, so normally there is
-nothing to start. Without the add-in installed, run one of these from the repository root and keep it
-running:
-
-```powershell
-python server.py
-```
-
-```bash
-uv run python server.py
-```
-
-The server serves the JSON API on `http://localhost:8000` and, when a localhost certificate is present,
-also the add-in files on `https://localhost:23000`. Use `--no-static` to serve only the API.
+The helper installed in step 1 already listens on `http://localhost:8000`, so there is nothing to start
+while the add-in is installed. (Without the add-in, run `install.ps1 -NoAutostart`, or start the helper
+in a console with `run-server.cmd`: `ZoteroHelper.exe --no-static` serves only the JSON API.)
 
 ### Load the Script Lab snippet
 
@@ -150,7 +148,6 @@ No extra libraries are required.
 ### Notes
 
 - Script Lab uses the same frontend logic as the standalone add-in.
-- The local proxy is still required because the Office webview cannot reliably talk directly to Better BibTeX on `127.0.0.1:23119`.
 
 ## 3. Development notes
 
@@ -158,9 +155,9 @@ No extra libraries are required.
 
 - Root files `index.html`, `style.css`, and `script.js` are for Script Lab usage.
 - `zotero-addon/www/` is the add-in web root: `taskpane.html`, `commands.html`, `style.css`, `frontend_core.js`.
+- `zotero-addon/helper/ZoteroHelper.cs` is the whole helper (API proxy + HTTPS file server), compiled by `install.ps1`.
 - `zotero-addon/manifest.xml` is the add-in manifest; `install.ps1` copies it to `%LOCALAPPDATA%\ZoteroCitations`.
 - `shared/frontend_core.js` is the single source of truth for frontend behavior.
-- `shared/zotero_proxy_server.py` is the single source of truth for the helper server.
 - `install.ps1` / `uninstall.ps1` install and remove the add-in on Windows.
 
 ### Generated and wrapped files
@@ -170,35 +167,37 @@ These files should not be treated as primary edit targets:
 - `script.js`
 - `zotero-addon/www/frontend_core.js`
 - `zotero-addon/www/style.css`
-- `server.py`
 
-For frontend behavior changes, edit `shared/frontend_core.js` and regenerate the outputs.
-For style changes, edit `style.css` and regenerate the outputs.
-For backend changes, edit `shared/zotero_proxy_server.py`; `install.ps1` copies it to the install folder.
+For frontend behavior changes, edit `shared/frontend_core.js`; for styling, edit `style.css`; then
+regenerate the outputs.
 
 ### Regenerating shared frontend files
 
-```bash
-python tools/sync_shared.py
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\sync_shared.ps1
 ```
 
 This updates `script.js`, `zotero-addon/www/frontend_core.js`, and `zotero-addon/www/style.css`.
-Afterwards re-run `install.ps1` so PowerPoint gets the new files (they are served from the install folder).
+Afterwards re-run `install.ps1` so PowerPoint gets the new files.
 
 ### Validation
 
-```bash
-python -m py_compile server.py shared/zotero_proxy_server.py tools/sync_shared.py
-python tools/test_server.py
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\test-helper.ps1
 ```
+
+It compiles the helper, starts it against a stub Better BibTeX and checks the API, the HTTPS file
+server, the no-cache headers and path traversal handling (21 checks). Then restart PowerPoint and open
+the pane to check the add-in itself.
 
 ### Implementation notes
 
-- The add-in fetches the helper server on `http://localhost:8000`.
-- `/zotero` proxies Better BibTeX CAYW calls.
+- `ZoteroHelper.exe` serves the JSON API on `http://localhost:8000` and the pane on `https://localhost:23000`.
+- `/zotero` proxies Better BibTeX CAYW calls (the Zotero picker can stay open for minutes, so the
+  upstream call has a 10 minute ceiling).
 - `/bibliography` proxies Better BibTeX JSON-RPC bibliography generation.
 - `/health` is used by the UI status indicator.
-- `https://localhost:23000` serves the pane itself (Office requires HTTPS for task panes).
+- Written in C# 5 on purpose: the compiler that ships with Windows is not a Roslyn compiler.
 - Bibliography output is based on citation keys stored in slide metadata.
 
 ### Useful links
