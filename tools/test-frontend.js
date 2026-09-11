@@ -193,6 +193,41 @@ check(
     })(),
 );
 
+console.log("citation tags");
+check(
+    "the old key-only tag still parses",
+    JSON.stringify(sandbox.parseCitationTag('["smith2020","doe2019"]')) === JSON.stringify([
+        { key: "smith2020", label: "" },
+        { key: "doe2019", label: "" },
+    ]),
+    JSON.stringify(sandbox.parseCitationTag('["smith2020","doe2019"]')),
+);
+check(
+    "the label is read back",
+    JSON.stringify(sandbox.parseCitationTag('[{"k":"smith2020","l":"Smith, 2020"}]')) === JSON.stringify([
+        { key: "smith2020", label: "Smith, 2020" },
+    ]),
+);
+check("broken tags are ignored", sandbox.parseCitationTag("not json").length === 0);
+check("unknown shapes are ignored", sandbox.parseCitationTag('[null,3,{"x":1}]').length === 0);
+check(
+    "citations are grouped by key with their slides",
+    (() => {
+        const groups = sandbox.groupCitationsByKey([
+            { key: "a", label: "(A, 2020)", slideNumber: 2 },
+            { key: "b", label: "", slideNumber: 3 },
+            { key: "a", label: "", slideNumber: 5 },
+            { key: "a", label: "(A, 2020)", slideNumber: 5 },
+        ]);
+        return (
+            groups.length === 2 &&
+            JSON.stringify(groups[0]) === JSON.stringify({ key: "a", label: "(A, 2020)", slides: [2, 5] }) &&
+            JSON.stringify(groups[1]) === JSON.stringify({ key: "b", label: "", slides: [3] })
+        );
+    })(),
+    JSON.stringify(sandbox.groupCitationsByKey([{ key: "a", label: "", slideNumber: 1 }])),
+);
+
 /* --- Office.js usage lint ----------------------------------------------------------------
  * Office.js proxies expose nothing until a property has been queued with load() and delivered by
  * an awaited context.sync(). Reading too early throws "The property 'x' is not available" at run

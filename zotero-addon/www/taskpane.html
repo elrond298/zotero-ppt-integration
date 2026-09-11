@@ -33,6 +33,10 @@
                 <option value="modern-language-association">MLA</option>
             </select>
         </label>
+        <label class="control-field control-inline" for="bibliography-font-size">
+            <span class="control-label">Text size</span>
+            <select id="bibliography-font-size" class="control-select"></select>
+        </label>
         <label class="control-field control-check" for="split-bibliography">
             <input type="checkbox" id="split-bibliography" />
             <span class="control-label">Continue on more slides when it does not fit</span>
@@ -45,6 +49,11 @@
     <div class="output-section">
         <h3>Slide Citations</h3>
         <div id="output" class="output-content" aria-live="polite"></div>
+    </div>
+
+    <div class="output-section">
+        <h3>All citations</h3>
+        <div id="all-citations" class="output-content" aria-live="polite"></div>
     </div>
 
     <script src="frontend_core.js"></script>

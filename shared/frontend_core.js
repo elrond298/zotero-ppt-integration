@@ -2,6 +2,7 @@ const PROXY_ENDPOINT = "http://localhost:8000/zotero";
 const BIB_ENDPOINT = "http://localhost:8000/bibliography";
 const HEALTH_ENDPOINT = "http://localhost:8000/health";
 const LOG_ENDPOINT = "http://localhost:8000/log";
+const SNAPSHOT_ENDPOINT = "http://localhost:8000/snapshot";
 const DEFAULT_BIBLIOGRAPHY_STYLE = "journal-of-geophysical-research-atmospheres";
 const BIBLIOGRAPHY_STYLE_STORAGE_KEY = "zotero-ppt:bibliography-style";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS";
@@ -10,12 +11,16 @@ const BIBLIOGRAPHY_TITLE = "References";
 const BIBLIOGRAPHY_CONTINUATION_TITLE = "References (cont.)";
 const BIBLIOGRAPHY_SPLIT_STORAGE_KEY = "zotero-ppt:split-bibliography";
 const DEFAULT_SPLIT_BIBLIOGRAPHY = true;
-const BIBLIOGRAPHY_FONT_SIZE = 14;
+const BIBLIOGRAPHY_FONT_SIZE_STORAGE_KEY = "zotero-ppt:bibliography-font-size";
+const BIBLIOGRAPHY_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24];
+const DEFAULT_BIBLIOGRAPHY_FONT_SIZE = 14;
 /* Fallback when PowerPoint does not report a text height that reacts to the text: about 120
    characters fit per line and about 15 lines fit on a slide, so this leaves headroom. */
 const BIBLIOGRAPHY_CHARS_PER_SLIDE = 1800;
-/* Set to false the first time Slide.moveTo fails, so unsupported builds are not asked again. */
-let canMoveSlides = true;
+/* Set to false when the host cannot move slides or render them as images
+   (Slide.moveTo and Slide.getImageAsBase64 arrived with PowerPointApi 1.8). */
+let canMoveSlides = supportsPowerPointApi("1.8");
+let canSnapshotSlides = null;
 
 const LOG_LEVELS = {
   NONE: 0,
@@ -94,6 +99,16 @@ Office.onReady((info) => {
     if (bibliographyStyleSelect) {
       initializeBibliographyStyleSelect(bibliographyStyleSelect);
       bibliographyStyleSelect.addEventListener("change", handleBibliographyStyleChange);
+    }
+    const fontSizeSelect = document.getElementById("bibliography-font-size");
+    if (fontSizeSelect instanceof HTMLSelectElement) {
+      initializeBibliographyFontSize(fontSizeSelect);
+      fontSizeSelect.addEventListener("change", handleBibliographyFontSizeChange);
+    }
+    const allCitationsElement = document.getElementById("all-citations");
+    if (allCitationsElement) {
+      allCitationsElement.addEventListener("click", handleJumpClick);
+      displayAllCitations();
     }
     const splitBibliographyInput = document.getElementById("split-bibliography");
     if (splitBibliographyInput instanceof HTMLInputElement) {
@@ -267,8 +282,62 @@ function handleRemoveClick(event) {
   }
 }
 
-async function collectCitationKeysFromSlides() {
-  const allCitationKeys = new Set();
+/* Is this PowerPointApi version available in the host? Feature-detect instead of trying and
+   failing: a rejected batch discards everything queued with it. */
+function supportsPowerPointApi(version) {
+  try {
+    return Boolean(Office.context && Office.context.requirements && Office.context.requirements.isSetSupported("PowerPointApi", version));
+  } catch (error) {
+    return false;
+  }
+}
+
+function capabilitySummary() {
+  const versions = ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9"];
+  const supported = versions.filter((version) => supportsPowerPointApi(version));
+  const diagnostics = (Office.context && Office.context.diagnostics) || {};
+  return "PowerPointApi " + (supported.length > 0 ? supported.join(",") : "none") +
+    " | host=" + (diagnostics.host || "?") + " platform=" + (diagnostics.platform || "?") +
+    " version=" + (diagnostics.version || "?");
+}
+
+/* Citations are stored as {"k": key, "l": label}; slides written before that hold plain key strings. */
+function parseCitationTag(value) {
+  const entries = [];
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    logWarn("Could not parse a citation tag", error);
+    return entries;
+  }
+  if (!Array.isArray(parsed)) return entries;
+
+  parsed.forEach((item) => {
+    if (typeof item === "string" && item.length > 0) {
+      entries.push({ key: item, label: "" });
+    } else if (item && typeof item === "object" && typeof item.k === "string" && item.k.length > 0) {
+      entries.push({ key: item.k, label: typeof item.l === "string" ? item.l : "" });
+    }
+  });
+  return entries;
+}
+
+/* One entry per cited item, with the slides that cite it, for the pane's list. */
+function groupCitationsByKey(citations) {
+  const groups = new Map();
+  citations.forEach((citation) => {
+    const group = groups.get(citation.key) || { key: citation.key, label: citation.label, slides: [] };
+    if (!group.label && citation.label) group.label = citation.label;
+    if (group.slides.indexOf(citation.slideNumber) < 0) group.slides.push(citation.slideNumber);
+    groups.set(citation.key, group);
+  });
+  return Array.from(groups.values());
+}
+
+/* {key, label, slideNumber} for every citation in the deck, in slide order. */
+async function collectCitationsFromSlides() {
+  const citations = [];
 
   await PowerPoint.run(async (context) => {
     const slides = context.presentation.slides;
@@ -280,22 +349,142 @@ async function collectCitationKeysFromSlides() {
     }
     await context.sync();
 
-    for (const slide of slides.items) {
+    slides.items.forEach((slide, index) => {
       const zoteroTag = slide.tags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
-      if (zoteroTag) {
-        try {
-          const keysArray = JSON.parse(zoteroTag.value);
-          if (Array.isArray(keysArray)) {
-            keysArray.forEach((key) => allCitationKeys.add(key));
-          }
-        } catch (error) {
-          logWarn("Could not parse citation keys on a slide", error);
-        }
-      }
-    }
+      if (!zoteroTag) return;
+      parseCitationTag(zoteroTag.value).forEach((entry) => {
+        citations.push({ key: entry.key, label: entry.label, slideNumber: index + 1 });
+      });
+    });
   });
 
-  return Array.from(allCitationKeys);
+  return citations;
+}
+
+function initializeBibliographyFontSize(selectElement) {
+  BIBLIOGRAPHY_FONT_SIZES.forEach((size) => {
+    const option = document.createElement("option");
+    option.value = String(size);
+    option.textContent = size + " pt";
+    selectElement.appendChild(option);
+  });
+  const saved = window.localStorage.getItem(BIBLIOGRAPHY_FONT_SIZE_STORAGE_KEY);
+  const preferred = Number(saved);
+  selectElement.value = String(
+    BIBLIOGRAPHY_FONT_SIZES.indexOf(preferred) >= 0 ? preferred : DEFAULT_BIBLIOGRAPHY_FONT_SIZE,
+  );
+}
+
+function handleBibliographyFontSizeChange(event) {
+  const value = Number(event.target.value);
+  const size = BIBLIOGRAPHY_FONT_SIZES.indexOf(value) >= 0 ? value : DEFAULT_BIBLIOGRAPHY_FONT_SIZE;
+  window.localStorage.setItem(BIBLIOGRAPHY_FONT_SIZE_STORAGE_KEY, String(size));
+}
+
+function getBibliographyFontSize() {
+  const selectElement = document.getElementById("bibliography-font-size");
+  if (selectElement instanceof HTMLSelectElement) {
+    const value = Number(selectElement.value);
+    if (BIBLIOGRAPHY_FONT_SIZES.indexOf(value) >= 0) return value;
+  }
+  return DEFAULT_BIBLIOGRAPHY_FONT_SIZE;
+}
+
+/* Saves a PNG of a slide (PowerPointApi 1.8) through the helper, so the result of a generation can
+   be looked at afterwards even when it failed. Unsupported hosts are asked only once. */
+async function snapshotSlide(context, slide, name) {
+  if (canSnapshotSlides === null) {
+    canSnapshotSlides = supportsPowerPointApi("1.8");
+    reportToHelper("capabilities: " + capabilitySummary());
+  }
+  if (!canSnapshotSlides) return;
+
+  try {
+    const image = slide.getImageAsBase64();
+    await context.sync();
+    if (image.value) {
+      await fetch(SNAPSHOT_ENDPOINT + "?name=" + encodeURIComponent(name), { method: "POST", body: image.value });
+    }
+  } catch (error) {
+    canSnapshotSlides = false;
+    logWarn("Could not render the slide as an image", error);
+    reportToHelper("slide.getImageAsBase64 failed" + describeError(error));
+  }
+}
+
+async function snapshotCurrentSlide() {
+  if (canSnapshotSlides === false) return;
+  try {
+    await PowerPoint.run(async (context) => {
+      const slides = context.presentation.getSelectedSlides();
+      slides.load("items");
+      await context.sync();
+      if (slides.items.length > 0) await snapshotSlide(context, slides.items[0], "failure");
+    });
+  } catch (error) {
+    logWarn("Could not snapshot the failing slide", error);
+  }
+}
+
+/* Jumping needs Presentation.setSelectedSlides() with slide ids (PowerPointApi 1.5). */
+async function jumpToSlide(slideNumber) {
+  if (!supportsPowerPointApi("1.5")) return;
+  try {
+    await PowerPoint.run(async (context) => {
+      const slides = context.presentation.slides;
+      slides.load("items/id");
+      await context.sync();
+      const slide = slides.items[slideNumber - 1];
+      if (slide) context.presentation.setSelectedSlides([slide.id]);
+      await context.sync();
+    });
+  } catch (error) {
+    logWarn("Could not select slide", slideNumber, error);
+  }
+}
+
+function handleJumpClick(event) {
+  const row = event.target.closest("[data-slide-number]");
+  if (!row) return;
+  jumpToSlide(Number(row.dataset.slideNumber));
+}
+
+/* Every cited item with the slides that cite it; clicking a row jumps to the first one. */
+async function displayAllCitations() {
+  const container = document.getElementById("all-citations");
+  if (!container) return;
+
+  try {
+    const groups = groupCitationsByKey(await collectCitationsFromSlides());
+    if (groups.length === 0) {
+      container.textContent = "No citations in this presentation yet.";
+      return;
+    }
+
+    const list = document.createElement("ul");
+    groups.forEach((group) => {
+      const listItem = document.createElement("li");
+      listItem.className = "citation-row";
+      listItem.dataset.slideNumber = String(group.slides[0]);
+      listItem.title = "Go to slide " + group.slides[0];
+
+      const label = document.createElement("span");
+      label.className = "citation-label";
+      label.textContent = group.label || group.key;
+
+      const slides = document.createElement("span");
+      slides.className = "citation-slides";
+      slides.textContent = group.slides.join(", ");
+
+      listItem.appendChild(label);
+      listItem.appendChild(slides);
+      list.appendChild(listItem);
+    });
+    container.replaceChildren(list);
+  } catch (error) {
+    logWarn("Could not list the citations of this presentation", error);
+    container.textContent = "Could not read the citations of this presentation.";
+  }
 }
 
 /* A key that BBT cannot resolve (renamed or deleted item) renders as nothing, so every key is
@@ -357,7 +546,8 @@ async function handleGenerateBibliography() {
   outputElement.textContent = "Generating bibliography...";
 
   try {
-    const uniqueKeys = await collectCitationKeysFromSlides();
+    const citations = await collectCitationsFromSlides();
+    const uniqueKeys = Array.from(new Set(citations.map((citation) => citation.key)));
     log("Found unique citation keys:", uniqueKeys);
 
     if (uniqueKeys.length === 0) {
@@ -387,6 +577,7 @@ async function handleGenerateBibliography() {
     const detail = describeError(error);
     outputElement.textContent = "Error: Could not generate bibliography." + detail;
     reportToHelper("generate bibliography failed" + detail);
+    await snapshotCurrentSlide();
   }
 }
 
@@ -506,22 +697,24 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
       await context.sync();
 
       const existingTag = customTags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
-      const citationKeys = new Set();
+      // {k: citation key, l: short label for the pane}; slides written earlier hold plain key strings.
+      const citations = [];
+      const seenKeys = new Set();
+      const remember = (entry) => {
+        if (!entry.key || seenKeys.has(entry.key)) return;
+        seenKeys.add(entry.key);
+        citations.push(entry);
+      };
 
       if (existingTag) {
-        try {
-          const keysArray = JSON.parse(existingTag.value);
-          if (Array.isArray(keysArray)) {
-            keysArray.forEach((key) => citationKeys.add(key));
-          }
-        } catch (error) {
-          logError("Could not parse existing citation tags:", error);
-        }
+        parseCitationTag(existingTag.value).forEach(remember);
       }
-      zoteroItems.forEach((item) => citationKeys.add(item.citationKey));
+      zoteroItems.forEach((item) => remember({ key: item.citationKey, label: formatSingleCitation(item) }));
 
-      const updatedKeysArray = Array.from(citationKeys);
-      slide.tags.add(ZOTERO_TAG_KEY, JSON.stringify(updatedKeysArray));
+      slide.tags.add(
+        ZOTERO_TAG_KEY,
+        JSON.stringify(citations.map((entry) => ({ k: entry.key, l: entry.label }))),
+      );
 
       const citationParts = zoteroItems.map((item) => formatSingleCitation(item));
       const citationsText = `(${citationParts.join("; ")})`;
@@ -569,16 +762,11 @@ async function removeCitation(keyToRemove) {
 
       const zoteroTag = customTags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
       if (zoteroTag) {
-        let currentKeys = [];
-        try {
-          currentKeys = JSON.parse(zoteroTag.value);
-        } catch (error) {
-          logError("Could not parse existing tags for removal:", error);
-          return;
-        }
-
-        const updatedKeys = currentKeys.filter((key) => key !== keyToRemove);
-        slide.tags.add(ZOTERO_TAG_KEY, JSON.stringify(updatedKeys));
+        const remaining = parseCitationTag(zoteroTag.value).filter((entry) => entry.key !== keyToRemove);
+        slide.tags.add(
+          ZOTERO_TAG_KEY,
+          JSON.stringify(remaining.map((entry) => ({ k: entry.key, l: entry.label }))),
+        );
         await context.sync();
       }
     });
@@ -610,21 +798,21 @@ async function displayCitationsFromSlide() {
 
       if (zoteroTag) {
         try {
-          const keysArray = JSON.parse(zoteroTag.value);
-          if (Array.isArray(keysArray) && keysArray.length > 0) {
+          const citations = parseCitationTag(zoteroTag.value);
+          if (citations.length > 0) {
             const list = document.createElement("ul");
 
-            keysArray.forEach((key) => {
+            citations.forEach((citation) => {
               const listItem = document.createElement("li");
               const removeButton = document.createElement("button");
               removeButton.className = "remove-btn";
               removeButton.innerHTML = "&times;";
-              removeButton.title = `Remove citation: ${key}`;
-              removeButton.dataset.key = key;
+              removeButton.title = `Remove citation: ${citation.key}`;
+              removeButton.dataset.key = citation.key;
 
               const keyText = document.createElement("span");
               keyText.className = "citation-key";
-              keyText.textContent = key;
+              keyText.textContent = citation.label || citation.key;
 
               listItem.appendChild(removeButton);
               listItem.appendChild(keyText);
@@ -959,7 +1147,7 @@ async function fillBibliographySlide(context, slide, page, title) {
 
   const textRange = shapes.contentShape.textFrame.textRange;
   textRange.text = page.text;
-  textRange.font.size = BIBLIOGRAPHY_FONT_SIZE;
+  textRange.font.size = getBibliographyFontSize();
   applyBibliographyFormatting(textRange, page.runs);
   shapes.contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
   await context.sync();
@@ -998,7 +1186,7 @@ async function measureBibliographyPages(context, slide, entries) {
   const budget = await slideTextBudget(context, slide, contentShape);
   const ruler = slide.shapes.addTextBox("", { left: -3000, top: 0, width: contentShape.width, height: 40 });
   ruler.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
-  ruler.textFrame.textRange.font.size = BIBLIOGRAPHY_FONT_SIZE;
+  ruler.textFrame.textRange.font.size = getBibliographyFontSize();
 
   try {
     const measure = async (candidate) => {
@@ -1130,6 +1318,7 @@ async function writeBibliographySlide(bibliography, splitAcrossSlides) {
     for (let index = 0; index < targets.length; index++) {
       const title = index === 0 ? BIBLIOGRAPHY_TITLE : BIBLIOGRAPHY_CONTINUATION_TITLE;
       await fillBibliographySlide(context, targets[index], pages[index], title);
+      await snapshotSlide(context, targets[index], "references-page-" + (index + 1));
     }
 
     // The bibliography belongs at the end of the deck, first page first - but Slide.moveTo throws a

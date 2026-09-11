@@ -386,6 +386,39 @@ h1,
     cursor: pointer;
 }
 
+/* A label and its select on one line, for the compact rows. */
+.control-inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.control-inline .control-label {
+    flex: none;
+}
+
+.control-inline .control-select {
+    flex: 1;
+}
+
+/* One row per cited item in the deck list: click it to jump to the slide that cites it. */
+#all-citations li {
+    cursor: pointer;
+    grid-template-columns: minmax(0, 1fr) auto;
+    font-family: var(--font-sans);
+}
+
+#all-citations li:hover {
+    border-color: var(--c-accent);
+}
+
+.citation-slides {
+    color: var(--c-text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
 .button-group .ms-Button {
     width: 100%;
     margin-bottom: 0;

@@ -251,6 +251,17 @@ while ($true) {
     Start-Sleep -Milliseconds 300
     Assert-Match "POST /log reaches the log file" "pane test message" (Get-Content (Join-Path $tempDir "helper.log") -Raw)
 
+    # Slide images the pane renders (PowerPointApi 1.8) are stored next to the helper.
+    $png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    $snapshot = Invoke-Endpoint -Uri "$api/snapshot?name=references-page-1" -Method "POST" -Body $png
+    Assert-Equal "POST /snapshot status" 200 $snapshot.Status
+    Assert-Match "POST /snapshot reports the file" "saved" $snapshot.Content
+    $saved = @(Get-ChildItem (Join-Path $tempDir "snapshots") -Filter "references-page-1-*.png" -ErrorAction SilentlyContinue)
+    Assert-Equal "POST /snapshot writes the image" 1 $saved.Count
+    if ($saved.Count -eq 1) { Assert-Equal "the saved image has the uploaded bytes" 70 $saved[0].Length }
+    $bad = Invoke-Endpoint -Uri "$api/snapshot?name=../escape" -Method "POST" -Body "not base64"
+    Assert-Equal "POST /snapshot rejects junk" 400 $bad.Status
+
     $down = Invoke-Endpoint -Uri "http://localhost:$downPort/zotero"
     Assert-Equal "GET /zotero with Zotero down" 500 $down.Status
     Assert-Match "GET /zotero with Zotero down body" "Better BibTeX" $down.Content

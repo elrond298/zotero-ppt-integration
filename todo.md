@@ -20,7 +20,9 @@
     - [x] spread a long bibliography over `References (cont.)` slides, measured with PowerPoint's own autosize,
     - [ ] offer "follow Zotero's quick-copy style" plus a free-text CSL style id
     - [ ] copy BibTeX / CSL-JSON / notes of the cited items (BBT item.export, item.notes)
-    - [ ] show author-year next to each citekey in the pane and click through to the citing slides
+    - [x] show a short label next to each citekey in the pane and click through to the citing slides
+    - [x] bibliography text size selector (the page split measures with the same size)
+    - [x] save each generated References page as a PNG (Slide.getImageAsBase64, PowerPointApi 1.8)
 - [ ] Better icons/author credits
 - [ ] Publishing to Microsoft AppSource. See [instructions](https://learn.microsoft.com/en-us/office/dev/add-ins/publish/publish) for details.
     - needs public HTTPS hosting of the pane, and the pane could then no longer reach the local helper

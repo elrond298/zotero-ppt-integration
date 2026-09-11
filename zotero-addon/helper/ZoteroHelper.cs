@@ -242,6 +242,10 @@ class ZoteroHelper
                     Log("pane: " + note.Replace("\r", " ").Replace("\n", " "));
                     WriteJson(stream, 200, "{\"status\":\"logged\"}");
                 }
+                else if (request.Path == "/snapshot" && request.Method == "POST")
+                {
+                    SaveSnapshot(stream, request);
+                }
                 else if (request.Path == "/zotero")
                 {
                     ProxyCitations(stream, request);
@@ -618,6 +622,64 @@ class ZoteroHelper
     {
         WriteResponse(stream, status, status == 200 ? "OK" : "Error", "application/json",
             Encoding.UTF8.GetBytes(json), true, false);
+    }
+
+    /* Saves a PNG the pane rendered with Slide.getImageAsBase64() (PowerPointApi 1.8) so the result
+       of a generation can be looked at afterwards. The name is sanitised and old files are pruned. */
+    static void SaveSnapshot(Stream stream, Request request)
+    {
+        try
+        {
+            string name = "slide";
+            if (request.Query != null)
+            {
+                foreach (string pair in request.Query.Split('&'))
+                {
+                    int equals = pair.IndexOf('=');
+                    if (equals > 0 && pair.Substring(0, equals) == "name")
+                    {
+                        name = Uri.UnescapeDataString(pair.Substring(equals + 1));
+                    }
+                }
+            }
+
+            StringBuilder safe = new StringBuilder();
+            foreach (char character in name)
+            {
+                if (char.IsLetterOrDigit(character) || character == '-' || character == '_' || character == '.')
+                {
+                    safe.Append(character);
+                }
+            }
+            if (safe.Length == 0) safe.Append("slide");
+
+            string directory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "snapshots");
+            Directory.CreateDirectory(directory);
+            string file = Path.Combine(directory, safe.ToString() + "-"
+                + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".png");
+            File.WriteAllBytes(file, Convert.FromBase64String((request.Body == null ? "" : request.Body).Trim()));
+            Log("snapshot saved: " + file);
+
+            FileInfo[] files = new DirectoryInfo(directory).GetFiles("*.png");
+            if (files.Length > 20)
+            {
+                Array.Sort(files, delegate(FileInfo left, FileInfo right)
+                {
+                    return left.LastWriteTimeUtc.CompareTo(right.LastWriteTimeUtc);
+                });
+                for (int i = 0; i < files.Length - 20; i++)
+                {
+                    files[i].Delete();
+                }
+            }
+
+            WriteJson(stream, 200, "{\"status\":\"saved\",\"path\":" + Serializer.Serialize(file) + "}");
+        }
+        catch (Exception e)
+        {
+            Log("snapshot failed: " + e.Message);
+            WriteJson(stream, 400, JsonError("Could not save the snapshot: " + e.Message));
+        }
     }
 
     static string JsonError(string message)
