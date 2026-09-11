@@ -77,6 +77,12 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
 
 ## Using it
 
+<img src="docs/images/powerpoint-pane.png" alt="PowerPoint with the Zotero Tools group on the Home tab and the Zotero Citations task pane open: Add Citation buttons, bibliography style and text size, Generate Bibliography, the slide's citations and every citation in the deck">
+
+*The real thing: the `Zotero Tools` group at the right end of the Home tab, the pane, and a citation on
+the slide. `All citations` lists every reference in the deck with the slide it appears on — click a row
+to jump there.*
+
 1. **Restart PowerPoint** once after installing — Office reads add-in registrations at start-up.
 2. Open it from `Home > Add-ins (加载项) > Zotero Citations`. The `Zotero Tools` group appears on the
    Home tab while the add-in is loaded. (Office does not pin sideloaded add-ins permanently — that is
