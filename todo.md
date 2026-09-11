@@ -23,6 +23,7 @@
     - [x] show a short label next to each citekey in the pane and click through to the citing slides
     - [x] bibliography text size selector (the page split measures with the same size)
     - [x] save each generated References page as a PNG (Slide.getImageAsBase64, PowerPointApi 1.8)
+    - [x] keep slide text and citation keys in step (deleted text drops its key; removing a key removes its text)
 - [ ] Better icons/author credits
 - [ ] Publishing to Microsoft AppSource. See [instructions](https://learn.microsoft.com/en-us/office/dev/add-ins/publish/publish) for details.
     - needs public HTTPS hosting of the pane, and the pane could then no longer reach the local helper

@@ -386,6 +386,15 @@ h1,
     cursor: pointer;
 }
 
+/* Short explanation under a list, e.g. which citation keys were dropped. */
+.note {
+    margin: 8px 0 0;
+    color: var(--c-text-muted);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 /* A label and its select on one line, for the compact rows. */
 .control-inline {
     flex-direction: row;

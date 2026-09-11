@@ -325,6 +325,54 @@ function parseCitationTag(value) {
   return entries;
 }
 
+/* The label stored with a citation is the text that was written for it, but that text can be edited
+   afterwards (a prefix added, "et al." inserted), so a citation counts as still present while its
+   author and year are still somewhere on the slide. An entry without a label is always kept. */
+function citationSearchTokens(label) {
+  const text = String(label || "").trim();
+  const yearMatch = /(1[5-9]\d{2}|20\d{2}|n\.d\.)/i.exec(text);
+  const year = yearMatch ? yearMatch[0].toLowerCase() : "";
+  const beforeYear = (yearMatch ? text.slice(0, yearMatch.index) : text).replace(/[\s,;.]+$/, "");
+  const authorMatch = /([\p{L}][\p{L}'’.-]*)\s*$/u.exec(beforeYear);
+  return { author: authorMatch ? authorMatch[1].toLowerCase() : "", year: year };
+}
+
+function citationTextPresent(label, slideText) {
+  const haystack = String(slideText || "").toLowerCase();
+  const tokens = citationSearchTokens(label);
+  if (tokens.author && tokens.year) {
+    return haystack.indexOf(tokens.author) >= 0 && haystack.indexOf(tokens.year) >= 0;
+  }
+  const wanted = String(label || "").trim().toLowerCase();
+  return wanted === "" || haystack.indexOf(wanted) >= 0;
+}
+
+/* Removes one citation from a shape's text: the parentheses go too when they only hold that
+   citation, and the separators of a multi-citation group are tidied up afterwards. */
+function removeCitationText(slideText, label) {
+  const text = String(slideText || "");
+  const wanted = String(label || "").trim();
+  if (wanted === "") return { text: text, removed: false };
+
+  const escaped = wanted.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  const match = new RegExp(escaped, "i").exec(text);
+  if (!match) return { text: text, removed: false };
+
+  let start = match.index;
+  let end = match.index + match[0].length;
+  const open = text.lastIndexOf("(", start);
+  if (open >= 0 && text.slice(open + 1, start).trim() === "" && text.charAt(end) === ")") {
+    start = open;
+    end += 1;
+  }
+
+  const cleaned = (text.slice(0, start) + text.slice(end))
+    .replace(/\s{2,}/g, " ")
+    .replace(/\(\s*[;,]\s*/g, "(")
+    .replace(/\s*[;,]\s*\)/g, ")");
+  return { text: cleaned.trim() === "" ? "" : cleaned, removed: true };
+}
+
 /* One entry per cited item, with the slides that cite it, for the pane's list. */
 function groupCitationsByKey(citations) {
   const groups = new Map();
@@ -766,6 +814,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
 
 async function removeCitation(keyToRemove) {
   try {
+    let textRemoved = false;
     await PowerPoint.run(async (context) => {
       const slide = context.presentation.getSelectedSlides().getItemAt(0);
       const customTags = slide.tags;
@@ -774,21 +823,59 @@ async function removeCitation(keyToRemove) {
 
       const zoteroTag = customTags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
       if (zoteroTag) {
-        const remaining = parseCitationTag(zoteroTag.value).filter((entry) => entry.key !== keyToRemove);
+        const citations = parseCitationTag(zoteroTag.value);
+        const removedEntry = citations.find((entry) => entry.key === keyToRemove);
+        const remaining = citations.filter((entry) => entry.key !== keyToRemove);
         slide.tags.add(
           ZOTERO_TAG_KEY,
           JSON.stringify(remaining.map((entry) => ({ k: entry.key, l: entry.label }))),
         );
         await context.sync();
+
+        // The text goes with the key, otherwise the slide still shows a citation that the
+        // bibliography no longer lists.
+        if (removedEntry) {
+          textRemoved = await removeCitationTextFromSlide(context, slide, removedEntry);
+        }
       }
     });
 
     await displayCitationsFromSlide();
     displayAllCitations();
+    if (!textRemoved) {
+      const note = document.createElement("p");
+      note.className = "note";
+      note.textContent = "Only the key was removed - its citation text was not found on this slide.";
+      document.getElementById("output").appendChild(note);
+    }
   } catch (error) {
     logError("Error removing citation:", error);
     document.getElementById("output").textContent = "Error: Could not remove citation.";
   }
+}
+
+/* Removes a citation's text from a slide. The stored label is the text that was written for it, so
+   the first shape that contains it wins; the search tolerates edited whitespace and keeps the
+   other citations of a group intact. */
+async function removeCitationTextFromSlide(context, slide, entry) {
+  const shapes = slide.shapes;
+  shapes.load("items/textFrame/textRange/text");
+  await context.sync();
+
+  for (const shape of shapes.items) {
+    const textFrame = shape.textFrame;
+    const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
+    if (!textRange || !textRange.text) continue;
+    const result = removeCitationText(textRange.text, entry.label || entry.key);
+    if (!result.removed) continue;
+    textRange.text = result.text;
+    await context.sync();
+    logInfo("removed the citation text of", entry.key);
+    return true;
+  }
+
+  logWarn("no shape on this slide contained the text of", entry.key);
+  return false;
 }
 
 async function displayCitationsFromSlide() {
@@ -804,18 +891,44 @@ async function displayCitationsFromSlide() {
       }
 
       const customTags = slide.tags;
+      const shapes = slide.shapes;
       customTags.load("key, value");
+      shapes.load("items/textFrame/textRange/text");
       await context.sync();
+
+      const slideText = shapes.items
+        .map((shape) => {
+          const textFrame = shape.textFrame;
+          const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
+          return textRange && textRange.text ? textRange.text : "";
+        })
+        .join("\n");
 
       const zoteroTag = customTags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
 
       if (zoteroTag) {
         try {
           const citations = parseCitationTag(zoteroTag.value);
-          if (citations.length > 0) {
+          // A citation whose text was deleted from the slide no longer belongs in the list or the
+          // bibliography, so entries that are gone from the slide's text are dropped from the tag.
+          const listed = citations.filter((citation) =>
+            citationTextPresent(citation.label || citation.key, slideText),
+          );
+          const dropped = citations.filter((citation) => listed.indexOf(citation) < 0);
+          if (dropped.length > 0) {
+            const droppedKeys = dropped.map((citation) => citation.key).join(", ");
+            logInfo("citations whose text is gone:", droppedKeys);
+            reportToHelper("dropped citations whose text was deleted: " + droppedKeys);
+            slide.tags.add(
+              ZOTERO_TAG_KEY,
+              JSON.stringify(listed.map((citation) => ({ k: citation.key, l: citation.label }))),
+            );
+            await context.sync();
+          }
+          if (listed.length > 0) {
             const list = document.createElement("ul");
 
-            citations.forEach((citation) => {
+            listed.forEach((citation) => {
               const listItem = document.createElement("li");
               const removeButton = document.createElement("button");
               removeButton.className = "remove-btn";
@@ -835,6 +948,14 @@ async function displayCitationsFromSlide() {
             outputElement.replaceChildren(list);
           } else {
             outputElement.textContent = "No Zotero citations found on this slide.";
+          }
+          if (dropped.length > 0) {
+            const note = document.createElement("p");
+            note.className = "note";
+            note.textContent =
+              "No longer counted (its text is gone from this slide): " +
+              dropped.map((citation) => citation.key).join(", ");
+            outputElement.appendChild(note);
           }
         } catch (error) {
           logError("Error parsing citation tags from slide:", error);

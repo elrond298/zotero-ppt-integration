@@ -210,6 +210,35 @@ check(
 );
 check("broken tags are ignored", sandbox.parseCitationTag("not json").length === 0);
 check("unknown shapes are ignored", sandbox.parseCitationTag('[null,3,{"x":1}]').length === 0);
+
+console.log("citation text tracking");
+const smithLabel = "Smith, 2020";
+check("a citation counts as present while its author and year are", sandbox.citationTextPresent(smithLabel, "(Smith, 2020; Doe, 2019)"));
+check("a citation survives an edited label", sandbox.citationTextPresent(smithLabel, "See Smith et al., 2020 for details"));
+check("a deleted citation is not present", !sandbox.citationTextPresent(smithLabel, "Doe, 2019 only"));
+check("an entry without a label is kept", sandbox.citationTextPresent("", "anything at all"));
+check("a prefixed label counts as present", sandbox.citationTextPresent("see Smith, 2020, p. 42", "(see Smith, 2020, p. 42)"));
+
+const loneCitation = sandbox.removeCitationText("(Smith, 2020)", smithLabel);
+check("a lone citation takes its parentheses with it", loneCitation.text === "" && loneCitation.removed, JSON.stringify(loneCitation));
+check(
+    "an inline citation leaves the sentence tidy",
+    sandbox.removeCitationText("Text (Smith, 2020) more", smithLabel).text === "Text more",
+    JSON.stringify(sandbox.removeCitationText("Text (Smith, 2020) more", smithLabel).text),
+);
+check(
+    "the rest of a citation group survives",
+    sandbox.removeCitationText("(Smith, 2020; Doe, 2019)", smithLabel).text === "(Doe, 2019)",
+    JSON.stringify(sandbox.removeCitationText("(Smith, 2020; Doe, 2019)", smithLabel).text),
+);
+check(
+    "the last of a group leaves a tidy group",
+    sandbox.removeCitationText("(Doe, 2019; Smith, 2020)", smithLabel).text === "(Doe, 2019)",
+    JSON.stringify(sandbox.removeCitationText("(Doe, 2019; Smith, 2020)", smithLabel).text),
+);
+check("edited whitespace still matches", sandbox.removeCitationText("(Smith,   2020)", smithLabel).removed);
+check("a citation that is not there changes nothing", sandbox.removeCitationText("Doe, 2019", smithLabel).removed === false);
+check("an empty label removes nothing", sandbox.removeCitationText("(Smith, 2020)", "").removed === false);
 check(
     "citations are grouped by key with their slides",
     (() => {

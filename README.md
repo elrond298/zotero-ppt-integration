@@ -81,6 +81,11 @@ for reading the log).
 ### Notes
 
 - The add-in reads and writes citation keys from slide metadata, not from slide text alone.
+- Text and key are kept in step: deleting a citation's text from a slide drops its key (and the
+  pane says which keys it dropped) the next time that slide is shown, while removing a key with the
+  `x` button also deletes the citation's text - and tells you if the text was not found. A citation
+  counts as present while its author and year are still somewhere on the slide, so editing the text
+  (adding `see`, `et al.`, a page number) never drops the reference.
 - Slide reordering uses `Slide.moveTo`, which some PowerPoint builds (16.0.17932 on Windows, for one)
   reject with a GeneralException; when that happens the reordering is skipped and the bibliography
   slides stay where they are, with a note in `server.log`.
