@@ -453,6 +453,26 @@ check("a deleted citation is not found", spanText("Nothing here at all", smithLa
 check("a citation without a label is not found", spanText("(Smith, 2020)", "") === null);
 check("a citation in a bare text box is found", spanText("Smith, 2020", smithLabel) === "Smith, 2020");
 check("the best of several groups wins", spanText("(Doe, 2019) and (Smith, 2020)", smithLabel) === "(Smith, 2020)", JSON.stringify(spanText("(Doe, 2019) and (Smith, 2020)", smithLabel)));
+check(
+    "a note added to one citation of a group goes with that citation only",
+    spanText("(AAA et al., 2022, see this; BBBB et al., 2000)", "AAA et al., 2022") === "AAA et al., 2022, see this",
+    JSON.stringify(spanText("(AAA et al., 2022, see this; BBBB et al., 2000)", "AAA et al., 2022")),
+);
+check(
+    "the last citation of a group is taken on its own",
+    spanText("(AAA et al., 2022; BBBB et al., 2000)", "BBBB et al., 2000") === " BBBB et al., 2000",
+    JSON.stringify(spanText("(AAA et al., 2022; BBBB et al., 2000)", "BBBB et al., 2000")),
+);
+check(
+    "a citation in the middle of three is taken on its own",
+    spanText("(A, 2001; BBB, 2002; C, 2003)", "BBB, 2002") === " BBB, 2002",
+    JSON.stringify(spanText("(A, 2001; BBB, 2002; C, 2003)", "BBB, 2002")),
+);
+check(
+    "a hand-edited citation inside a group is found by its year",
+    spanText("(Smyth et al., 2022, see this; BBBB et al., 2000)", "AAA et al., 2022") === "Smyth et al., 2022, see this",
+    JSON.stringify(spanText("(Smyth et al., 2022, see this; BBBB et al., 2000)", "AAA et al., 2022")),
+);
 
 console.log("Office.js usage lint");
 OFFICEJS_LINT_FIXTURES.forEach((fixture) => {

@@ -377,26 +377,64 @@ function repairCitationText(text, keys) {
 /* Finds the citation's text in a shape, tolerating the edits a user makes to it: the exact text
    when it is still there, otherwise the parenthesised group that still looks like it (same year, and
    as many of the same words as possible). A citation that was deleted leaves no such group. */
+/* The parenthesised group holding this position, or null. */
+function citationGroupAt(haystack, index) {
+  const open = haystack.lastIndexOf("(", index);
+  if (open < 0) return null;
+  const close = haystack.indexOf(")", index);
+  if (close < 0) return null;
+  return { open: open, close: close };
+}
+
+/* The pieces a group is made of: one citation, or several separated by semicolons. Removing a
+   citation takes its own piece, not the whole group. */
+function citationSegments(haystack, group) {
+  const innerStart = group.open + 1;
+  const inner = haystack.slice(innerStart, group.close);
+  const segments = [];
+  let from = 0;
+  inner.split(";").forEach((part) => {
+    segments.push({ start: innerStart + from, end: innerStart + from + part.length, text: part });
+    from += part.length + 1;
+  });
+  return segments;
+}
+
+/* The text that belongs to one citation: its label with whatever was added to it, the parentheses
+   when it is the only citation in them, otherwise just its own piece of the group. */
+function citationSpanAt(haystack, index, length) {
+  const group = citationGroupAt(haystack, index);
+  if (!group) {
+    const rest = haystack.slice(index + length);
+    if (rest.length > 0 && rest.length <= 60 && rest.indexOf(";") < 0) {
+      return { start: index, end: haystack.length };
+    }
+    return { start: index, end: index + length };
+  }
+
+  const segments = citationSegments(haystack, group);
+  if (segments.length <= 1) return { start: group.open, end: group.close + 1 };
+
+  const segment = segments.find((piece) => index >= piece.start && index <= piece.end);
+  if (!segment) return { start: index, end: index + length };
+
+  let start = segment.start;
+  let end = segment.end;
+  while (start > group.open + 1 && haystack.charAt(start - 1) === " ") start -= 1;
+  if (haystack.charAt(end) === " ") end += 1;
+  return { start: start, end: end };
+}
+
+/* Finds the citation's text in a shape, tolerating the edits a user makes to it: the exact label
+   when it is still there, otherwise the piece of a citation group that still looks like it (same
+   year, shared words). A citation that was deleted leaves no such piece. */
 function findCitationSpan(text, label) {
   const haystack = String(text || "");
   const wanted = String(label || "").trim();
   if (wanted === "") return null;
 
   const exact = haystack.indexOf(wanted);
-  if (exact >= 0) {
-    // Take the parentheses around it with it ("(Smith, 2020, p. 42)"), but only when they hold
-    // little else - "(see Smith, 2020)" is still the citation, "(Smith, 2020; Doe, 2019)" is not.
-    const open = haystack.lastIndexOf("(", exact);
-    const close = haystack.indexOf(")", exact + wanted.length);
-    const group = open >= 0 && close >= 0 ? haystack.slice(open, close + 1) : "";
-    const years = group.match(/\b(1[5-9]\d{2}|20\d{2})\b/g) || [];
-    // The group may carry a little more than the label ("..., see page 2"), but not another
-    // citation: those bring their own year and are left for their own removal.
-    if (group !== "" && years.length <= 1 && close - open <= wanted.length + 40 && haystack.slice(open + 1, exact).trim().length <= 6) {
-      return { start: open, end: close + 1 };
-    }
-    return { start: exact, end: exact + wanted.length };
-  }
+  if (exact >= 0) return citationSpanAt(haystack, exact, wanted.length);
 
   const year = (wanted.match(/\b(1[5-9]\d{2}|20\d{2})\b/) || [])[0] || "";
   const words = (wanted.match(/[\p{L}][\p{L}'’.-]*/gu) || [])
@@ -407,7 +445,8 @@ function findCitationSpan(text, label) {
   const pattern = /\([^()]*\)/g;
   let match = pattern.exec(haystack);
   while (match) {
-    candidates.push({ start: match.index, end: match.index + match[0].length, text: match[0] });
+    const group = { open: match.index, close: match.index + match[0].length - 1 };
+    citationSegments(haystack, group).forEach((piece) => candidates.push(piece));
     match = pattern.exec(haystack);
   }
   if (candidates.length === 0 && haystack.trim().length > 0 && haystack.length <= 200) {
@@ -417,16 +456,17 @@ function findCitationSpan(text, label) {
   let best = null;
   let bestScore = 0;
   candidates.forEach((candidate) => {
-    const lower = candidate.text.toLowerCase();
+    const lower = String(candidate.text || "").toLowerCase();
     let score = year && lower.indexOf(year) >= 0 ? 2 : 0;
     score += words.filter((word) => lower.indexOf(word) >= 0).length;
-    if (candidate.text.trim().length <= wanted.length + 8) score += 1;
+    if (String(candidate.text || "").trim().length <= wanted.length + 8) score += 1;
     if (score > bestScore) {
       bestScore = score;
       best = candidate;
     }
   });
-  return bestScore >= 2 ? best : null;
+  if (!best || bestScore < 2) return null;
+  return citationSpanAt(haystack, best.start, String(best.text || "").trim().length);
 }
 
 /* The id of the shape whose text holds what was just written. That id, stored on the slide's
@@ -466,9 +506,11 @@ async function readCitationShapes(context, slide) {
 function tidyCitationText(text) {
   const cleaned = String(text || "")
     .replace(/\s{2,}/g, " ")
+    .replace(/;\s*;/g, ";")
+    .replace(/,\s*,/g, ",")
     .replace(/\(\s*[;,]\s*/g, "(")
     .replace(/\s*[;,]\s*\)/g, ")")
-    .replace(/\(\s*\)/g, "")
+    .replace(/\(\s*\)/g, "");
   return cleaned.trim() === "" ? "" : cleaned.trim();
 }
 

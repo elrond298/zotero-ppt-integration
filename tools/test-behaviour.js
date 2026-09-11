@@ -260,6 +260,20 @@ async function main() {
     await pane.displayCitationsFromSlide();
     check("a deleted text box drops the citation it held", world.slideTag().length === 0, JSON.stringify(world.slideTag()));
 
+    /* 8a. a note added inside a group of citations: only that citation goes (reported 22:5x) */
+    console.log("a hand-edited note inside a group of citations");
+    world = deck();
+    pane = loadPane(world);
+    await pane.insertCitationsIntoPowerPoint([citation("aaa2022", ["AAA"], "2022"), citation("bbbb2000", ["BBBB"], "2000")]);
+    world.setText(" (AAA et al., 2022, see this; BBBB et al., 2000)");
+    await pane.removeCitation("aaa2022");
+    check("the other citation stays, with its parentheses", world.text() === "(BBBB et al., 2000)", JSON.stringify(world.text()));
+    check(
+        "the other key stays",
+        JSON.stringify(world.slideTag().map((entry) => entry.k)) === JSON.stringify(["bbbb2000"]),
+        JSON.stringify(world.slideTag()),
+    );
+
     /* 8b. a citation with something added by hand goes as a whole */
     console.log("a citation with a note added by hand");
     world = deck();
