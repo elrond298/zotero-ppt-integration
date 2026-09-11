@@ -198,15 +198,15 @@ console.log("citation tags");
 check(
     "the old key-only tag still parses",
     JSON.stringify(sandbox.parseCitationTag('["smith2020","doe2019"]')) === JSON.stringify([
-        { key: "smith2020", label: "", recorded: false },
-        { key: "doe2019", label: "", recorded: false },
+        { key: "smith2020", label: "", shapeId: "", recorded: false },
+        { key: "doe2019", label: "", shapeId: "", recorded: false },
     ]),
     JSON.stringify(sandbox.parseCitationTag('["smith2020","doe2019"]')),
 );
 check(
     "the label is read back",
     JSON.stringify(sandbox.parseCitationTag('[{"k":"smith2020","l":"Smith, 2020"}]')) === JSON.stringify([
-        { key: "smith2020", label: "Smith, 2020", recorded: false },
+        { key: "smith2020", label: "Smith, 2020", shapeId: "", recorded: false },
     ]),
 );
 check("broken tags are ignored", sandbox.parseCitationTag("not json").length === 0);

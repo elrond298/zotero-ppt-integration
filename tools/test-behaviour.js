@@ -12,6 +12,7 @@ const vm = require("vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "shared", "frontend_core.js"), "utf8");
 
+let shapeCounter = 0;
 let passed = 0;
 const failures = [];
 
@@ -42,7 +43,9 @@ function tagList(initial) {
 
 function shape(name, text) {
     const range = { text: text, load() {}, font: {} };
+    shapeCounter += 1;
     return {
+        id: "shape-" + shapeCounter,
         name: name,
         textFrame: { textRange: range, autoSizeSetting: 0 },
         tags: tagList(),
@@ -130,7 +133,7 @@ function loadPane(world) {
             context: { requirements: { isSetSupported: () => true }, diagnostics: { host: "test" } },
         },
         PowerPoint: world.PowerPoint,
-        console: { log() {}, warn() {}, error(...args) { process.stderr.write("[pane error] " + args.map(String).join(" ") + "\n"); }, info() {} },
+        console: { log() {}, warn(...a) { process.stderr.write("[pane warn] " + a.map(String).join(" ") + "\n"); }, error(...args) { process.stderr.write("[pane error] " + args.map(String).join(" ") + "\n"); }, info() {} },
         JSON,
         Math,
         String,
@@ -181,14 +184,10 @@ async function main() {
     check("the citation is written as plain text", world.text() === " (Zhu, 2022)", JSON.stringify(world.text()));
     check(
         "the slide tag lists the key as recorded",
-        JSON.stringify(world.slideTag()) === JSON.stringify([{ k: "zhu2022", l: "Zhu, 2022", r: 1 }]),
+        world.slideTag().length === 1 && world.slideTag()[0].k === "zhu2022" && world.slideTag()[0].s === world.selected.id,
         JSON.stringify(world.slideTag()),
     );
-    check(
-        "the shape records the citation",
-        JSON.stringify(world.shapeTag(world.selected)) === JSON.stringify([{ k: "zhu2022", l: "Zhu, 2022" }]),
-        JSON.stringify(world.shapeTag(world.selected)),
-    );
+    check("the recorded shape id is the text box that received it", world.slideTag()[0].s === world.selected.id);
 
     /* 2. editing the wording keeps the key */
     console.log("editing the citation");

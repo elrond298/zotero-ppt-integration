@@ -324,12 +324,13 @@ function parseCitationTag(value) {
 
   parsed.forEach((item) => {
     if (typeof item === "string" && item.length > 0) {
-      entries.push({ key: item, label: "", recorded: false });
+      entries.push({ key: item, label: "", shapeId: "", recorded: false });
     } else if (item && typeof item === "object" && typeof item.k === "string" && item.k.length > 0) {
       entries.push({
         key: item.k,
         label: typeof item.l === "string" ? item.l : "",
-        recorded: Boolean(item.r),
+        shapeId: typeof item.s === "string" ? item.s : "",
+        recorded: typeof item.s === "string" && item.s !== "",
       });
     }
   });
@@ -374,61 +375,6 @@ function repairCitationText(text, keys) {
     result = result.split(CITATION_MARK_START + key + CITATION_MARK_START).join("");
   });
   return stripMarkerJunk(result).replace(/\s{2,}/g, " ");
-}
-
-/* The value of a tag, or an empty string when the collection has no such tag. */
-function valueOfTag(tags, key) {
-  const found = Array.isArray(tags) ? tags.find((tag) => tag.key === key) : null;
-  return found ? found.value : "";
-}
-
-/* Merges the citations recorded on a shape with the ones just written into it. */
-function mergeCitationEntries(existing, additions) {
-  const merged = existing.slice();
-  additions.forEach((entry) => {
-    if (!entry || !entry.key) return;
-    if (merged.some((item) => item.key === entry.key)) return;
-    merged.push({ key: entry.key, label: entry.label || "" });
-  });
-  return merged;
-}
-
-/* Which citations the shapes of this slide still hold: a shape whose text is empty has lost them,
-   and a shape that is gone recorded something the slide tag still lists. A failure here must never
-   drop a key. */
-async function collectShapeCitationRecords(context, slide) {
-  const live = [];
-  const gone = [];
-  if (!supportsPowerPointApi("1.3")) return { live: live, gone: gone };
-
-  try {
-    const shapes = slide.shapes;
-    shapes.load("items/textFrame/textRange/text");
-    await context.sync();
-
-    for (const shape of shapes.items) {
-      const textFrame = shape.textFrame;
-      const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
-      const text = textRange && textRange.text ? textRange.text : "";
-      const shapeTags = shape.tags;
-      shapeTags.load("key, value");
-      await context.sync();
-      const records = parseCitationTag(valueOfTag(shapeTags.items, ZOTERO_TAG_KEY));
-      if (records.length === 0) continue;
-      const empty = text.trim() === "";
-      records.forEach((record) => {
-        // An entry without a label cannot be judged, so it counts as still there.
-        const stillThere = !empty && (record.label === "" || findCitationSpan(text, record.label) !== null);
-        const target = stillThere ? live : gone;
-        if (target.indexOf(record.key) < 0) target.push(record.key);
-      });
-    }
-    return { live: live, gone: gone };
-  } catch (error) {
-    logWarn("Could not read the citation records of the shapes", error);
-    reportToHelper("shape citation records failed" + describeError(error));
-    return { live: live, gone: gone, failed: true };
-  }
 }
 
 /* Finds the citation's text in a shape, tolerating the edits a user makes to it: the exact text
@@ -484,6 +430,39 @@ function findCitationSpan(text, label) {
     }
   });
   return bestScore >= 2 ? best : null;
+}
+
+/* The id of the shape whose text holds what was just written. That id, stored on the slide's
+   citation tag, is how the add-in knows later whether the citation's text box is still there. */
+async function findCitationShapeId(context, slide, citationsText) {
+  const shapes = slide.shapes;
+  shapes.load("items/id,items/textFrame/textRange/text");
+  await context.sync();
+
+  const holders = shapes.items.filter((shape) => {
+    const textFrame = shape.textFrame;
+    const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
+    return (textRange && textRange.text ? textRange.text : "").indexOf(citationsText) >= 0;
+  });
+  const holder = holders[holders.length - 1];
+  return holder ? String(holder.id || "") : "";
+}
+
+/* The shapes of this slide by id, with whether each still holds text. A citation recorded on a shape
+   is still there while that shape exists with text - editing the citation's wording does not matter -
+   and it is gone once the shape is gone or emptied. */
+async function readCitationShapes(context, slide) {
+  const byId = new Map();
+  const shapes = slide.shapes;
+  shapes.load("items/id,items/textFrame/textRange/text");
+  await context.sync();
+  shapes.items.forEach((shape) => {
+    const textFrame = shape.textFrame;
+    const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
+    const text = textRange && textRange.text ? textRange.text : "";
+    byId.set(String(shape.id || ""), text.trim() !== "");
+  });
+  return byId;
 }
 
 /* Tidies the text a citation left behind: no double spaces, no separator without a citation. */
@@ -904,6 +883,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
       }));
       const citationsText = "(" + citationParts.map((part) => part.text).join("; ") + ")";
       const shapeTagEntries = citationParts.map((part) => ({ key: part.key, label: part.text }));
+      let holderId = "";
 
       try {
         const selectedTextRange = context.presentation.getSelectedTextRange();
@@ -934,8 +914,8 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
       // whether a citation is still there, without reading the citation's wording.
       if (supportsPowerPointApi("1.3")) {
         try {
-          const tagged = await tagShapeWithCitations(context, slide, citationsText, shapeTagEntries);
-          if (tagged) {
+          holderId = await findCitationShapeId(context, slide, citationsText);
+          if (holderId !== "") {
             // Mark on the slide which citations a shape recorded: only those can be checked when a
             // text box goes away.
             slide.tags.add(
@@ -944,7 +924,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
                 citations.map((entry) => ({
                   k: entry.key,
                   l: entry.label,
-                  r: shapeTagEntries.some((part) => part.key === entry.key) ? 1 : 0,
+                  s: shapeTagEntries.some((part) => part.key === entry.key) ? holderId : "",
                 })),
               ),
             );
@@ -964,33 +944,6 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
   }
 }
 
-/* Records the citations on the shape whose text now holds what was just written. */
-async function tagShapeWithCitations(context, slide, citationsText, entries) {
-  const shapes = slide.shapes;
-  shapes.load("items/textFrame/textRange/text");
-  await context.sync();
-
-  const holders = shapes.items.filter((shape) => {
-    const textFrame = shape.textFrame;
-    const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
-    return (textRange && textRange.text ? textRange.text : "").indexOf(citationsText) >= 0;
-  });
-  const holder = holders[holders.length - 1];
-  if (!holder) return false;
-
-  const holderTags = holder.tags;
-  holderTags.load("key, value");
-  await context.sync();
-  const merged = mergeCitationEntries(
-    parseCitationTag(valueOfTag(holderTags.items, ZOTERO_TAG_KEY)),
-    entries,
-  );
-  holderTags.add(ZOTERO_TAG_KEY, JSON.stringify(merged.map((entry) => ({ k: entry.key, l: entry.label }))));
-  await context.sync();
-  logInfo("recorded", entries.length, "citation(s) on a shape");
-  return true;
-}
-
 async function removeCitation(keyToRemove) {
   try {
     let textRemoved = false;
@@ -1007,7 +960,7 @@ async function removeCitation(keyToRemove) {
         const remaining = citations.filter((entry) => entry.key !== keyToRemove);
         slide.tags.add(
           ZOTERO_TAG_KEY,
-          JSON.stringify(remaining.map((entry) => ({ k: entry.key, l: entry.label }))),
+          JSON.stringify(remaining.map((entry) => ({ k: entry.key, l: entry.label, s: entry.shapeId || "" }))),
         );
         await context.sync();
 
@@ -1063,49 +1016,6 @@ async function removeCitationTextFromSlide(context, slide, entry) {
   return false;
 }
 
-/* The value of a tag, or an empty string when the collection has no such tag. */
-function valueOfTag(tags, key) {
-  const found = tags.find((tag) => tag.key === key);
-  return found ? found.value : "";
-}
-
-/* Records the citations on the shape that received them: the shape whose text now ends with what
-   was just written. Hosts without shape tags keep the slide-level tag only. */
-async function tagShapeWithCitations(context, slide, citationsText, citations) {
-  if (!supportsPowerPointApi("1.3")) return false;
-
-  try {
-    const shapes = slide.shapes;
-    shapes.load("items/textFrame/textRange/text");
-    await context.sync();
-
-    const holders = shapes.items.filter((shape) => {
-      const textFrame = shape.textFrame;
-      const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
-      const text = textRange && textRange.text ? textRange.text : "";
-      return text.indexOf(citationsText) >= 0;
-    });
-    const holder = holders[holders.length - 1];
-    if (!holder) return false;
-
-    holder.tags.load("key, value");
-    await context.sync();
-    const merged = mergeCitationEntries(
-      parseCitationTag(valueOfTag(holder.tags.items, ZOTERO_TAG_KEY)),
-      citations,
-    );
-    holder.tags.add(
-      ZOTERO_TAG_KEY,
-      JSON.stringify(merged.map((entry) => ({ k: entry.key, l: entry.label }))),
-    );
-    await context.sync();
-    return true;
-  } catch (error) {
-    logWarn("Could not record the citations on the shape", error);
-    return false;
-  }
-}
-
 async function displayCitationsFromSlide() {
   const outputElement = document.getElementById("output");
   outputElement.innerHTML = "";
@@ -1141,13 +1051,11 @@ async function displayCitationsFromSlide() {
           // bibliography, so entries that are gone from the slide's text are dropped from the tag.
           let listed = citations;
           try {
-            const records = await collectShapeCitationRecords(context, slide);
-            listed = records.failed
-              ? citations
-              : citations.filter((citation) => !citation.recorded || records.live.indexOf(citation.key) >= 0);
+            const shapesById = await readCitationShapes(context, slide);
+            listed = citations.filter((citation) => !citation.recorded || shapesById.get(citation.shapeId) === true);
           } catch (error) {
             logWarn("Could not check whether the citations are still there", error);
-            reportToHelper("citation record check failed" + describeError(error));
+            reportToHelper("citation shape check failed" + describeError(error));
           }
           const dropped = citations.filter((citation) => listed.indexOf(citation) < 0);
           if (dropped.length > 0) {
