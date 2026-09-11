@@ -393,6 +393,42 @@ function mergeCitationEntries(existing, additions) {
   return merged;
 }
 
+/* Which citations the shapes of this slide still hold: a shape whose text is empty has lost them,
+   and a shape that is gone recorded something the slide tag still lists. A failure here must never
+   drop a key. */
+async function collectShapeCitationRecords(context, slide) {
+  const live = [];
+  const gone = [];
+  if (!supportsPowerPointApi("1.3")) return { live: live, gone: gone };
+
+  try {
+    const shapes = slide.shapes;
+    shapes.load("items/textFrame/textRange/text");
+    await context.sync();
+
+    for (const shape of shapes.items) {
+      const textFrame = shape.textFrame;
+      const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
+      const text = textRange && textRange.text ? textRange.text : "";
+      const shapeTags = shape.tags;
+      shapeTags.load("key, value");
+      await context.sync();
+      const records = parseCitationTag(valueOfTag(shapeTags.items, ZOTERO_TAG_KEY));
+      if (records.length === 0) continue;
+      const empty = text.trim() === "";
+      records.forEach((record) => {
+        const target = empty ? gone : live;
+        if (target.indexOf(record.key) < 0) target.push(record.key);
+      });
+    }
+    return { live: live, gone: gone };
+  } catch (error) {
+    logWarn("Could not read the citation records of the shapes", error);
+    reportToHelper("shape citation records failed" + describeError(error));
+    return { live: live, gone: gone, failed: true };
+  }
+}
+
 /* Tidies the text a citation left behind: no double spaces, no separator without a citation. */
 function tidyCitationText(text) {
   const cleaned = String(text || "")
@@ -1042,9 +1078,16 @@ async function displayCitationsFromSlide() {
           const citations = parseCitationTag(zoteroTag.value);
           // A citation whose text was deleted from the slide no longer belongs in the list or the
           // bibliography, so entries that are gone from the slide's text are dropped from the tag.
-          const records = await collectShapeCitationRecords(context, slide);
-          const unrecorded = citations.filter((citation) => citation.recorded && records.live.indexOf(citation.key) >= 0);
-          const listed = citations.filter((citation) => !citation.recorded || unrecorded.indexOf(citation) >= 0);
+          let listed = citations;
+          try {
+            const records = await collectShapeCitationRecords(context, slide);
+            listed = records.failed
+              ? citations
+              : citations.filter((citation) => !citation.recorded || records.live.indexOf(citation.key) >= 0);
+          } catch (error) {
+            logWarn("Could not check whether the citations are still there", error);
+            reportToHelper("citation record check failed" + describeError(error));
+          }
           const dropped = citations.filter((citation) => listed.indexOf(citation) < 0);
           if (dropped.length > 0) {
             const droppedKeys = dropped.map((citation) => citation.key).join(", ");
@@ -1095,6 +1138,7 @@ async function displayCitationsFromSlide() {
           }
         } catch (error) {
           logError("Error parsing citation tags from slide:", error);
+          reportToHelper("reading the slide citations failed" + describeError(error));
           outputElement.textContent = "Error reading citations from this slide.";
         }
       } else {
