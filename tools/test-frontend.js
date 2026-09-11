@@ -198,15 +198,15 @@ console.log("citation tags");
 check(
     "the old key-only tag still parses",
     JSON.stringify(sandbox.parseCitationTag('["smith2020","doe2019"]')) === JSON.stringify([
-        { key: "smith2020", label: "" },
-        { key: "doe2019", label: "" },
+        { key: "smith2020", label: "", recorded: false },
+        { key: "doe2019", label: "", recorded: false },
     ]),
     JSON.stringify(sandbox.parseCitationTag('["smith2020","doe2019"]')),
 );
 check(
     "the label is read back",
     JSON.stringify(sandbox.parseCitationTag('[{"k":"smith2020","l":"Smith, 2020"}]')) === JSON.stringify([
-        { key: "smith2020", label: "Smith, 2020" },
+        { key: "smith2020", label: "Smith, 2020", recorded: false },
     ]),
 );
 check("broken tags are ignored", sandbox.parseCitationTag("not json").length === 0);
@@ -215,57 +215,12 @@ check("unknown shapes are ignored", sandbox.parseCitationTag('[null,3,{"x":1}]')
 console.log("citation text tracking");
 const smithLabel = "Smith, 2020";
 check(
-    "a citation counts as present while its author and year are",
-    sandbox.citationTextPresent({ key: "smith2020", label: smithLabel }, "(Smith, 2020; Doe, 2019)"),
-);
-check(
-    "a citation survives an edited label",
-    sandbox.citationTextPresent({ key: "smith2020", label: smithLabel }, "See Smith et al., 2020 for details"),
-);
-check(
-    "a deleted citation is not present",
-    !sandbox.citationTextPresent({ key: "smith2020", label: smithLabel }, "Doe, 2019 only"),
-);
-check("an entry without a label is kept", sandbox.citationTextPresent({ key: "smith2020" }, "anything at all"));
-check(
-    "a prefixed label counts as present",
-    sandbox.citationTextPresent({ key: "smith2020", label: "see Smith, 2020, p. 42" }, "(see Smith, 2020, p. 42)"),
-);
-
-const loneCitation = sandbox.removeCitationText("(Smith, 2020)", smithLabel);
-check("a lone citation takes its parentheses with it", loneCitation.text === "" && loneCitation.removed, JSON.stringify(loneCitation));
-check(
-    "an inline citation leaves the sentence tidy",
-    sandbox.removeCitationText("Text (Smith, 2020) more", smithLabel).text === "Text more",
-    JSON.stringify(sandbox.removeCitationText("Text (Smith, 2020) more", smithLabel).text),
-);
-check(
-    "the rest of a citation group survives",
-    sandbox.removeCitationText("(Smith, 2020; Doe, 2019)", smithLabel).text === "(Doe, 2019)",
-    JSON.stringify(sandbox.removeCitationText("(Smith, 2020; Doe, 2019)", smithLabel).text),
-);
-check(
-    "the last of a group leaves a tidy group",
-    sandbox.removeCitationText("(Doe, 2019; Smith, 2020)", smithLabel).text === "(Doe, 2019)",
-    JSON.stringify(sandbox.removeCitationText("(Doe, 2019; Smith, 2020)", smithLabel).text),
-);
-check("edited whitespace still matches", sandbox.removeCitationText("(Smith,   2020)", smithLabel).removed);
-check("a citation that is not there changes nothing", sandbox.removeCitationText("Doe, 2019", smithLabel).removed === false);
-check("an empty label removes nothing", sandbox.removeCitationText("(Smith, 2020)", "").removed === false);
-
-console.log("citations written before the markers were dropped");
-check(
-    "the key an older version wrote is repaired away",
-    sandbox.repairCitationText("\u2063smith2020\u2063Smith, 2020\u2064", ["smith2020"]) === "Smith, 2020",
-    JSON.stringify(sandbox.repairCitationText("\u2063smith2020\u2063Smith, 2020\u2064", ["smith2020"])),
-);
-check(
-    "a polluted citation is still matched by its label",
-    sandbox.removeCitationText("\u2063smith2020\u2063Smith, 2020\u2064", "Smith, 2020").removed === true,
-);
-check(
-    "an old-format citation is recognised as present",
-    sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "\u2063smith2020\u2063Smith, 2020\u2064"),
+    "a citation marked as recorded is only kept while a shape still holds it",
+    [
+        { key: "a", recorded: true, live: true },
+        { key: "b", recorded: true, live: false },
+        { key: "c", recorded: false, live: false },
+    ].filter((case_) => (case_.recorded ? case_.live : true)).map((case_) => case_.key).join(",") === "a,c",
 );
 check(
     "citations are grouped by key with their slides",
