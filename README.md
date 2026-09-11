@@ -92,7 +92,8 @@ for reading the log).
 
 ### Troubleshooting
 
-- **The pane stays blank.** Read `%LOCALAPPDATA%\ZoteroCitations\server.log`, and open
+- A pane that loaded while the helper was restarting reloads itself once to get its stylesheet back.
+- **The pane stays blank or looks unstyled.** Read `%LOCALAPPDATA%\ZoteroCitations\server.log`, and open
   `https://localhost:23000/taskpane.html` in a browser to see what the add-in receives.
 - **"Proxy not running" in the pane.** The helper is not running: start
   `%LOCALAPPDATA%\ZoteroCitations\run-server.cmd` (visible console with the same log) or re-run `install.ps1`.
@@ -198,13 +199,13 @@ node tools/test-frontend.js
 ```
 
 The first compiles the helper, starts it against a stub Better BibTeX and checks the API, the CORS
-preflight, the HTTPS file server, the no-cache headers and path traversal handling (26 checks). The
+preflight, the HTTPS file server, the no-cache headers and path traversal handling (29 checks). The
 second runs the pane's code without a browser: the citation text builder (picker locator, prefix,
 suffix, suppress author), the HTML-to-formatting-runs parser, and an Office.js usage lint that fails
 when a collection is read before its `load()` was delivered by an awaited `context.sync()` - the bug
 that made Generate Bibliography fail once in PowerPoint. The lint ships with fixtures that must be
 flagged (they are part of the test), and reintroducing the load/sync bug in the frontend makes it fail
-on the real file; the bibliography entry splitter is covered too (34 checks). Then restart PowerPoint
+on the real file; the bibliography entry splitter and the character-budget fallback are covered too (39 checks). Then restart PowerPoint
 and open the pane to check the add-in itself.
 
 ### Implementation notes
@@ -215,7 +216,7 @@ and open the pane to check the add-in itself.
 - `/bibliography` proxies Better BibTeX JSON-RPC bibliography generation; `format: "html"` in the
   request becomes `contentType: html` upstream, which is what makes real italics/bold/sub/superscript
   possible in the References slide.
-- `/health` is used by the UI status indicator.
+- `/health` is used by the UI status indicator; `POST /log` lets the pane write its own errors into `server.log`.
 - Written in C# 5 on purpose: the compiler that ships with Windows is not a Roslyn compiler.
 - Bibliography output is based on citation keys stored in slide metadata.
 

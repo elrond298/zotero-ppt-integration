@@ -1,6 +1,7 @@
 const PROXY_ENDPOINT = "http://localhost:8000/zotero";
 const BIB_ENDPOINT = "http://localhost:8000/bibliography";
 const HEALTH_ENDPOINT = "http://localhost:8000/health";
+const LOG_ENDPOINT = "http://localhost:8000/log";
 const DEFAULT_BIBLIOGRAPHY_STYLE = "journal-of-geophysical-research-atmospheres";
 const BIBLIOGRAPHY_STYLE_STORAGE_KEY = "zotero-ppt:bibliography-style";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS";
@@ -9,6 +10,9 @@ const BIBLIOGRAPHY_TITLE = "References";
 const BIBLIOGRAPHY_CONTINUATION_TITLE = "References (cont.)";
 const BIBLIOGRAPHY_SPLIT_STORAGE_KEY = "zotero-ppt:split-bibliography";
 const DEFAULT_SPLIT_BIBLIOGRAPHY = true;
+/* Fallback when PowerPoint cannot report how tall the text is: about 112 characters fit per
+   line and about 21 lines fit on a slide, so this leaves headroom. */
+const BIBLIOGRAPHY_CHARS_PER_SLIDE = 1600;
 
 const LOG_LEVELS = {
   NONE: 0,
@@ -49,6 +53,17 @@ function log(...args) {
 }
 
 let healthIntervalId = null;
+
+/* A pane that loaded while the helper was restarting can end up without its stylesheet; in that
+   case the page reloads itself once. */
+(function reloadIfStylesheetFailed() {
+  const stylesheet = document.querySelector('link[rel="stylesheet"]');
+  const alreadyReloaded = window.sessionStorage.getItem("zotero-ppt:stylesheet-reload") === "1";
+  if (stylesheet && !stylesheet.sheet && !alreadyReloaded) {
+    window.sessionStorage.setItem("zotero-ppt:stylesheet-reload", "1");
+    window.location.reload();
+  }
+})();
 
 Office.onReady((info) => {
   if (info.host !== Office.HostType.PowerPoint) {
@@ -297,6 +312,43 @@ async function findMissingCitationKeys(keys, style) {
   return results.filter((key) => key !== null);
 }
 
+/* Runs one step of the bibliography flow, so a failure can name the step it happened in. */
+async function runStep(label, action) {
+  try {
+    return await action();
+  } catch (error) {
+    if (error && !error.step) error.step = label;
+    throw error;
+  }
+}
+
+/* The pane reports its own failures to the helper, so they show up in server.log. */
+function reportToHelper(message) {
+  try {
+    fetch(LOG_ENDPOINT, { method: "POST", body: String(message), keepalive: true }).catch(() => {});
+  } catch (error) {
+    // Diagnostics must never break the add-in.
+  }
+}
+
+/* Office.js errors carry the failing statement in debugInfo, which is what makes them fixable. */
+function describeError(error) {
+  if (!error) return "";
+  const parts = [];
+  if (error.step) parts.push(error.step);
+  if (error.code) parts.push(String(error.code));
+  const debugInfo = error.debugInfo;
+  if (debugInfo) {
+    if (debugInfo.statement) {
+      parts.push("`" + String(debugInfo.statement).replace(/\s+/g, " ").trim() + "`");
+    }
+    if (debugInfo.errorLocation) parts.push(String(debugInfo.errorLocation));
+  } else if (error.message) {
+    parts.push(String(error.message));
+  }
+  return parts.length > 0 ? " (" + parts.join(" ") + ")" : "";
+}
+
 async function handleGenerateBibliography() {
   const outputElement = document.getElementById("output");
   outputElement.textContent = "Generating bibliography...";
@@ -311,8 +363,10 @@ async function handleGenerateBibliography() {
     }
 
     const style = getSelectedBibliographyStyle();
-    const missingKeys = await findMissingCitationKeys(uniqueKeys, style);
-    const bibliographyHtml = await fetchBibliographyFromServer(uniqueKeys, style, "html");
+    const missingKeys = await runStep("checking the citation keys", () => findMissingCitationKeys(uniqueKeys, style));
+    const bibliographyHtml = await runStep("asking Zotero", () =>
+      fetchBibliographyFromServer(uniqueKeys, style, "html"),
+    );
     const bibliography = parseFormattedBibliography(bibliographyHtml);
 
     if (!bibliography.text) {
@@ -320,15 +374,16 @@ async function handleGenerateBibliography() {
       return;
     }
 
-    await writeBibliographySlide(bibliography, isSplitBibliographyEnabled());
+    await runStep("writing the slides", () => writeBibliographySlide(bibliography, isSplitBibliographyEnabled()));
 
     outputElement.textContent = missingKeys.length > 0
       ? `Bibliography generated. Not found in Zotero: ${missingKeys.join(", ")}`
       : "Bibliography generated successfully!";
   } catch (error) {
     logError("Error generating bibliography:", error);
-    const detail = error && error.message ? " (" + error.message + ")" : "";
+    const detail = describeError(error);
     outputElement.textContent = "Error: Could not generate bibliography." + detail;
+    reportToHelper("generate bibliography failed" + detail);
   }
 }
 
@@ -916,6 +971,16 @@ async function splitBibliographyIntoPages(context, slide, bibliography, splitAcr
     return [joinBibliographyEntries(entries)];
   }
 
+  try {
+    return await measureBibliographyPages(context, slide, entries);
+  } catch (error) {
+    logWarn("Could not measure the bibliography on the slide:", error);
+    reportToHelper("bibliography measurement failed" + describeError(error));
+    return splitEntriesByCharacterBudget(entries, BIBLIOGRAPHY_CHARS_PER_SLIDE);
+  }
+}
+
+async function measureBibliographyPages(context, slide, entries) {
   const shapes = await findSlideTextShapes(context, slide, true);
   const contentShape = shapes.contentShape;
   contentShape.load("height");
@@ -954,6 +1019,27 @@ async function splitBibliographyIntoPages(context, slide, bibliography, splitAcr
     pages.push(joinBibliographyEntries(remaining.slice(0, fits)));
     start += fits;
   }
+  return pages;
+}
+
+/* The fallback splitter: no PowerPoint measurement, just a character budget per slide. Entries are
+   never split, so an entry longer than the budget gets a page of its own. */
+function splitEntriesByCharacterBudget(entries, budget) {
+  const pages = [];
+  let current = [];
+  let length = 0;
+
+  for (const entry of entries) {
+    const projected = current.length === 0 ? entry.text.length : length + 1 + entry.text.length;
+    if (current.length > 0 && projected > budget) {
+      pages.push(joinBibliographyEntries(current));
+      current = [];
+      length = 0;
+    }
+    current.push(entry);
+    length = current.length === 1 ? entry.text.length : length + 1 + entry.text.length;
+  }
+  if (current.length > 0) pages.push(joinBibliographyEntries(current));
   return pages;
 }
 

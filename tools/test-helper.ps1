@@ -244,6 +244,13 @@ while ($true) {
     $unknown = Invoke-Endpoint -Uri "$api/nope"
     Assert-Equal "GET /nope status" 404 $unknown.Status
 
+    # The pane reports failures here, so they can be read from the helper log.
+    $logPost = Invoke-Endpoint -Uri "$api/log" -Method "POST" -Body 'pane test message'
+    Assert-Equal "POST /log status" 200 $logPost.Status
+    Assert-Match "POST /log confirms" "logged" $logPost.Content
+    Start-Sleep -Milliseconds 300
+    Assert-Match "POST /log reaches the log file" "pane test message" (Get-Content (Join-Path $tempDir "helper.log") -Raw)
+
     $down = Invoke-Endpoint -Uri "http://localhost:$downPort/zotero"
     Assert-Equal "GET /zotero with Zotero down" 500 $down.Status
     Assert-Match "GET /zotero with Zotero down body" "Better BibTeX" $down.Content

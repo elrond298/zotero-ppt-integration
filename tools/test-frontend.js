@@ -32,8 +32,12 @@ const sandbox = {
     parseInt,
     parseFloat,
     isNaN,
-    document: { readyState: "complete", getElementById: () => null },
-    window: {},
+    document: { readyState: "complete", getElementById: () => null, querySelector: () => null },
+    window: {
+        localStorage: { getItem: () => null, setItem: () => {} },
+        sessionStorage: { getItem: () => null, setItem: () => {} },
+        location: { reload: () => {} },
+    },
 };
 vm.createContext(sandbox);
 vm.runInContext(source, sandbox, { filename: "frontend_core.js" });
@@ -160,6 +164,33 @@ check(
 check(
     "pretty printed entries still give one line each",
     sandbox.parseFormattedBibliography('<div class="csl-entry">\n  First.\n</div>\n<div class="csl-entry">\n  Second.\n</div>').text === "First.\nSecond.",
+);
+
+console.log("page splitting without PowerPoint");
+const budgetEntries = [1, 2, 3, 4, 5].map((index) => ({ text: "entry " + index, runs: [] }));
+const budgetPages = sandbox.splitEntriesByCharacterBudget(budgetEntries, 16);
+check(
+    "a page holds as many entries as the budget allows",
+    budgetPages.length === 3,
+    JSON.stringify(budgetPages.map((page) => page.text)),
+);
+check("the first page stops before the budget", budgetPages[0].text === "entry 1\nentry 2", JSON.stringify(budgetPages[0].text));
+check("no entry is lost or duplicated", budgetPages.map((page) => page.text).join("\n").split("\n").length === 5);
+check(
+    "an entry bigger than the budget gets its own page",
+    sandbox.splitEntriesByCharacterBudget(
+        [{ text: "small", runs: [] }, { text: "x".repeat(90), runs: [] }, { text: "small", runs: [] }],
+        16,
+    ).length === 3,
+);
+check(
+    "page splitting keeps formatting runs valid",
+    (() => {
+        const pages = sandbox.splitEntriesByCharacterBudget(twoEntries.entries, 20);
+        return pages.every((page) =>
+            page.runs.every((run) => page.text.slice(run.start, run.start + run.length) === "Title one"),
+        );
+    })(),
 );
 
 /* --- Office.js usage lint ----------------------------------------------------------------

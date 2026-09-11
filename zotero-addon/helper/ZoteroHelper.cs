@@ -234,6 +234,14 @@ class ZoteroHelper
                 {
                     WriteJson(stream, 200, "{\"status\":\"ok\"}");
                 }
+                else if (request.Path == "/log" && request.Method == "POST")
+                {
+                    // The pane reports its own failures here, so they can be read from server.log.
+                    string note = request.Body == null ? "" : request.Body.Trim();
+                    if (note.Length > 4000) note = note.Substring(0, 4000);
+                    Log("pane: " + note.Replace("\r", " ").Replace("\n", " "));
+                    WriteJson(stream, 200, "{\"status\":\"logged\"}");
+                }
                 else if (request.Path == "/zotero")
                 {
                     ProxyCitations(stream, request);
