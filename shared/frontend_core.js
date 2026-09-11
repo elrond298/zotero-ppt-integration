@@ -14,7 +14,6 @@ const BIBLIOGRAPHY_FONT_SIZE = 14;
 /* Fallback when PowerPoint does not report a text height that reacts to the text: about 120
    characters fit per line and about 15 lines fit on a slide, so this leaves headroom. */
 const BIBLIOGRAPHY_CHARS_PER_SLIDE = 1800;
-const BIBLIOGRAPHY_FALLBACK_BUDGET = 380;
 /* Set to false the first time Slide.moveTo fails, so unsupported builds are not asked again. */
 let canMoveSlides = true;
 
@@ -1053,17 +1052,14 @@ async function measureBibliographyPages(context, slide, entries) {
 /* The layout keeps the height the placeholder was designed with, which is the room a slide offers;
    the slide's own placeholder may have grown to fit a previous bibliography. */
 async function slideTextBudget(context, slide, contentShape) {
-  try {
-    const layoutShapes = slide.layout.shapes;
-    layoutShapes.load("items/name,items/height");
-    await context.sync();
-    const match = layoutShapes.items.find((shape) => (shape.name || "") === (contentShape.name || ""));
-    if (match && match.height > 0) return match.height;
-  } catch (error) {
-    logWarn("Could not read the layout height for the bibliography", error);
+  const layoutShapes = slide.layout.shapes;
+  layoutShapes.load("items/name,items/height");
+  await context.sync();
+  const match = layoutShapes.items.find((shape) => (shape.name || "") === (contentShape.name || ""));
+  if (!match || !(match.height > 0)) {
+    throw new Error("no layout placeholder matches " + contentShape.name);
   }
-  if (contentShape.height > 0) return contentShape.height;
-  return BIBLIOGRAPHY_FALLBACK_BUDGET;
+  return match.height;
 }
 
 /* The fallback splitter: no PowerPoint measurement, just a character budget per slide. Entries are
