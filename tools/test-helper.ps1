@@ -207,6 +207,12 @@ while ($true) {
     Assert-Equal "POST /bibliography status" 200 $bibliography.Status
     Assert-Match "POST /bibliography body" "A title" $bibliography.Content
 
+    # The pane's JSON POST is preflighted; without these headers Chromium blocks it.
+    $preflight = Invoke-Endpoint -Uri "$api/bibliography" -Method "OPTIONS"
+    Assert-Equal "OPTIONS /bibliography status" 200 $preflight.Status
+    Assert-Match "OPTIONS allows the JSON content type" "Content-Type" ([string]$preflight.Headers["Access-Control-Allow-Headers"])
+    Assert-Match "OPTIONS allows POST" "POST" ([string]$preflight.Headers["Access-Control-Allow-Methods"])
+
     $noKeys = Invoke-Endpoint -Uri "$api/bibliography" -Method "POST" -Body '{"keys":[],"style":"apa"}'
     Assert-Equal "POST /bibliography without keys" 400 $noKeys.Status
     Assert-Match "POST /bibliography without keys body" "No citation keys" $noKeys.Content

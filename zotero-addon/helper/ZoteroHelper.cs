@@ -539,23 +539,37 @@ class ZoteroHelper
                 if (read <= 0) return false;
                 for (int i = 0; i < read; i++) buffer.Add(chunk[i]);
 
-                int end = FindHeaderEnd(buffer);
+                int terminatorLength;
+                int end = FindHeaderEnd(buffer, out terminatorLength);
                 if (end >= 0)
                 {
                     head = buffer.GetRange(0, end).ToArray();
-                    leftover = buffer.GetRange(end + 4, buffer.Count - end - 4).ToArray();
+                    int bodyStart = end + terminatorLength;
+                    leftover = buffer.GetRange(bodyStart, buffer.Count - bodyStart).ToArray();
                     return true;
                 }
                 if (buffer.Count > MaxHeaderBytes) return false;
             }
         }
 
-        static int FindHeaderEnd(List<byte> buffer)
+        static int FindHeaderEnd(List<byte> buffer, out int terminatorLength)
         {
+            terminatorLength = 0;
             for (int i = 3; i < buffer.Count; i++)
             {
-                if (buffer[i - 3] == 13 && buffer[i - 2] == 10 && buffer[i - 1] == 13 && buffer[i] == 10) return i - 3;
-                if (buffer[i - 1] == 10 && buffer[i] == 10) return i - 1;
+                if (buffer[i - 3] == 13 && buffer[i - 2] == 10 && buffer[i - 1] == 13 && buffer[i] == 10)
+                {
+                    terminatorLength = 4;
+                    return i - 3;
+                }
+            }
+            for (int i = 1; i < buffer.Count; i++)
+            {
+                if (buffer[i - 1] == 10 && buffer[i] == 10)
+                {
+                    terminatorLength = 2;
+                    return i - 1;
+                }
             }
             return -1;
         }
@@ -605,7 +619,13 @@ class ZoteroHelper
         head.Append("Content-Length: ").Append(body.Length.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
         head.Append("Connection: close\r\n");
         if (noStore) head.Append("Cache-Control: no-store\r\n");
-        if (cors) head.Append("Access-Control-Allow-Origin: *\r\n");
+        if (cors)
+        {
+            head.Append("Access-Control-Allow-Origin: *\r\n");
+            head.Append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n");
+            // The pane's JSON POST is preflighted, so Chromium needs this header to let it through.
+            head.Append("Access-Control-Allow-Headers: X-Requested-With, Content-Type\r\n");
+        }
         head.Append("\r\n");
 
         byte[] headBytes = Encoding.ASCII.GetBytes(head.ToString());

@@ -270,7 +270,8 @@ async function handleGenerateBibliography() {
     outputElement.textContent = "Bibliography generated successfully!";
   } catch (error) {
     logError("Error generating bibliography:", error);
-    outputElement.textContent = "Error: Could not generate bibliography.";
+    const detail = error && error.message ? " (" + error.message + ")" : "";
+    outputElement.textContent = "Error: Could not generate bibliography." + detail;
   }
 }
 
