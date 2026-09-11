@@ -213,11 +213,23 @@ check("unknown shapes are ignored", sandbox.parseCitationTag('[null,3,{"x":1}]')
 
 console.log("citation text tracking");
 const smithLabel = "Smith, 2020";
-check("a citation counts as present while its author and year are", sandbox.citationTextPresent(smithLabel, "(Smith, 2020; Doe, 2019)"));
-check("a citation survives an edited label", sandbox.citationTextPresent(smithLabel, "See Smith et al., 2020 for details"));
-check("a deleted citation is not present", !sandbox.citationTextPresent(smithLabel, "Doe, 2019 only"));
-check("an entry without a label is kept", sandbox.citationTextPresent("", "anything at all"));
-check("a prefixed label counts as present", sandbox.citationTextPresent("see Smith, 2020, p. 42", "(see Smith, 2020, p. 42)"));
+check(
+    "a citation counts as present while its author and year are",
+    sandbox.citationTextPresent({ key: "smith2020", label: smithLabel }, "(Smith, 2020; Doe, 2019)"),
+);
+check(
+    "a citation survives an edited label",
+    sandbox.citationTextPresent({ key: "smith2020", label: smithLabel }, "See Smith et al., 2020 for details"),
+);
+check(
+    "a deleted citation is not present",
+    !sandbox.citationTextPresent({ key: "smith2020", label: smithLabel }, "Doe, 2019 only"),
+);
+check("an entry without a label is kept", sandbox.citationTextPresent({ key: "smith2020" }, "anything at all"));
+check(
+    "a prefixed label counts as present",
+    sandbox.citationTextPresent({ key: "smith2020", label: "see Smith, 2020, p. 42" }, "(see Smith, 2020, p. 42)"),
+);
 
 const loneCitation = sandbox.removeCitationText("(Smith, 2020)", smithLabel);
 check("a lone citation takes its parentheses with it", loneCitation.text === "" && loneCitation.removed, JSON.stringify(loneCitation));
@@ -239,6 +251,51 @@ check(
 check("edited whitespace still matches", sandbox.removeCitationText("(Smith,   2020)", smithLabel).removed);
 check("a citation that is not there changes nothing", sandbox.removeCitationText("Doe, 2019", smithLabel).removed === false);
 check("an empty label removes nothing", sandbox.removeCitationText("(Smith, 2020)", "").removed === false);
+
+console.log("citation markers");
+const markedGroup = sandbox.formatCitationGroup([
+    { key: "smith2020", text: "Smith, 2020" },
+    { key: "doe2019", text: "Doe, 2019" },
+]);
+const stripMarkers = (text) => String(text).replace(/\u2063[^\u2063\u2064]*\u2063|\u2064/g, "");
+check("a written citation keeps its visible text", stripMarkers(markedGroup) === "(Smith, 2020; Doe, 2019)", JSON.stringify(markedGroup));
+check("the marker is invisible and holds the key", markedGroup.indexOf("\u2063smith2020\u2063") === 1, JSON.stringify(markedGroup));
+check("a marker answers presence exactly", sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, markedGroup));
+check("a citation without a marker is gone from a marked slide", !sandbox.citationTextPresent({ key: "x2020", label: "X, 2020" }, markedGroup));
+check(
+    "an edited label does not drop a marked citation",
+    sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, markedGroup.replace("Smith, 2020", "Smith et al., 2020")),
+);
+check("a marker-free slide still uses the label", sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "(Smith, 2020)"));
+
+const afterFirstRemoval = sandbox.removeMarkedCitation(markedGroup, "smith2020");
+check(
+    "the marked citation is removed exactly",
+    afterFirstRemoval.removed && stripMarkers(afterFirstRemoval.text) === "(Doe, 2019)",
+    JSON.stringify(afterFirstRemoval.text),
+);
+const afterLastRemoval = sandbox.removeMarkedCitation(markedGroup, "doe2019");
+check(
+    "removing the last citation leaves one citation",
+    stripMarkers(afterLastRemoval.text) === "(Smith, 2020)",
+    JSON.stringify(afterLastRemoval.text),
+);
+const editedRemoval = sandbox.removeMarkedCitation(markedGroup.replace("Smith, 2020", "Smith et al., 2020"), "smith2020");
+check(
+    "an edited citation is still removed exactly",
+    editedRemoval.removed && editedRemoval.text.indexOf("Smith") < 0 && stripMarkers(editedRemoval.text) === "(Doe, 2019)",
+    JSON.stringify(editedRemoval.text),
+);
+check("a citation that was never marked is not removed", sandbox.removeMarkedCitation(markedGroup.replace("Smith, 2020", "Smith et al., 2020"), "x2020").removed === false);
+check(
+    "a marked citation whose text was deleted counts as gone",
+    !sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "(\u2063smith2020\u2063\u2064)"),
+);
+check(
+    "an emptied marker is removed with its empty parentheses",
+    sandbox.removeMarkedCitation("(\u2063smith2020\u2063\u2064)", "smith2020").text === "",
+    JSON.stringify(sandbox.removeMarkedCitation("(\u2063smith2020\u2063\u2064)", "smith2020").text),
+);
 check(
     "citations are grouped by key with their slides",
     (() => {
