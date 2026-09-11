@@ -81,12 +81,12 @@ for reading the log).
 ### Notes
 
 - The add-in reads and writes citation keys from slide metadata, not from slide text alone.
-- Every citation written by this version is wrapped in invisible marker characters that carry its
-  citation key (`U+2063keyU+2063` before the text, `U+2064` after it). That is what lets the add-in
-  find, check and remove a citation exactly - no matching on the citation's text - and the markers
-  travel with the text when it is copied. They are invisible in PowerPoint but they are part of the
-  text, and removing a citation takes them away again. Slides written before this have no markers,
-  so those fall back to looking for the author and year in the slide's text.
+- Every citation written by this version is wrapped in invisible marker characters (`U+2063` before
+  the text, `U+2064` after it) that say exactly where it is, so a citation that was deleted is
+  recognised without guessing from its author and year. The markers carry no key: an earlier attempt
+  put the citation key inside them, and PowerPoint showed the key as part of the citation. Decks
+  written before markers, and entries whose label was edited beyond recognition, fall back to looking
+  for the author and year.
 - Text and key are kept in step: deleting a citation's text from a slide drops its key (and the
   pane says which keys it dropped) the next time that slide is shown, while removing a key with the
   `x` button also deletes the citation's text - and tells you if the text was not found. A citation
