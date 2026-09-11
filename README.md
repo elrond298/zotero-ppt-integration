@@ -197,8 +197,12 @@ node tools/test-frontend.js
 
 The first compiles the helper, starts it against a stub Better BibTeX and checks the API, the CORS
 preflight, the HTTPS file server, the no-cache headers and path traversal handling (26 checks). The
-second runs the pane's pure helpers without a browser: the citation text builder (picker locator,
-prefix, suffix, suppress author) and the HTML-to-formatting-runs parser (21 checks). Then restart
+second runs the pane's code without a browser: the citation text builder (picker locator, prefix,
+suffix, suppress author), the HTML-to-formatting-runs parser, and an Office.js usage lint that fails
+when a collection is read before its `load()` was delivered by an awaited `context.sync()` - the bug
+that made Generate Bibliography fail once in PowerPoint. The lint ships with fixtures that must be
+flagged (they are part of the test), and reintroducing the load/sync bug in the frontend makes it fail
+on the real file (27 checks). Then restart PowerPoint and open the pane to check the add-in itself.
 PowerPoint and open the pane to check the add-in itself.
 
 ### Implementation notes

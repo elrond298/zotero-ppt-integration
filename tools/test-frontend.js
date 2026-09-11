@@ -119,6 +119,220 @@ check(
     sandbox.parseFormattedBibliography("<i>Half a title").text === "Half a title",
 );
 
+/* --- Office.js usage lint ----------------------------------------------------------------
+ * Office.js proxies expose nothing until a property has been queued with load() and delivered by
+ * an awaited context.sync(). Reading too early throws "The property 'x' is not available" at run
+ * time - inside PowerPoint, where that is slow to discover. The rules below catch that class of
+ * bug here instead, and the fixtures prove the rules actually fire (a lint that cannot flag the
+ * bug it was written for is worse than no lint).
+ */
+const OFFICEJS_LINT_FIXTURES = [
+    {
+        name: "collection read after load without a sync (the real regression)",
+        source: [
+            "async function findBibliographySlide(slides) {",
+            "  for (const slide of slides.items) {",
+            "    slide.shapes.load(\"items/name\");",
+            "  }",
+            "  return slides.items.find((slide) => slide.shapes.items.length > 0);",
+            "}",
+        ].join("\n"),
+        expect: "slide.shapes.items",
+    },
+    {
+        name: "sync not awaited",
+        source: [
+            "async function loadThem(context) {",
+            "  const slides = context.presentation.slides;",
+            "  slides.load(\"items\");",
+            "  context.sync();",
+            "  return slides.items.length;",
+            "}",
+        ].join("\n"),
+        expect: "awaited",
+    },
+    {
+        name: "getCount() value read before the sync",
+        source: [
+            "async function countThem(slides) {",
+            "  const count = slides.getCount();",
+            "  return count.value;",
+            "}",
+        ].join("\n"),
+        expect: "count.value",
+    },
+    {
+        name: "nested load makes the child collection readable",
+        source: [
+            "async function ok(context) {",
+            "  const masters = context.presentation.slideMasters.load(\"id, layouts/items/name\");",
+            "  await context.sync();",
+            "  for (const master of masters.items) {",
+            "    for (const layout of master.layouts.items) {",
+            "      void layout.name;",
+            "    }",
+            "  }",
+            "}",
+        ].join("\n"),
+        expect: null,
+    },
+];
+
+/* Line ranges of the function bodies, found by indentation: this file keeps one statement per
+   line, so the body ends at the first closing brace back at the head's indentation. */
+/* Function body line ranges, found by indentation: one statement per line, so a body ends at the
+   first closing brace back at the head's own indentation. Heads may sit mid-line (e.g.
+   `await PowerPoint.run(async (context) => {`), which is why the indentation comes from the line. */
+function officeJsScopes(lines) {
+    const headPatterns = [
+        /(?:async\s+)?function\s+[\w$]*\s*\(([^)]*)\)\s*\{/,
+        /(?:async\s+)?\(([^()]*)\)\s*=>\s*\{/,
+        /([\w$]+)\s*=>\s*\{/,
+    ];
+    const scopes = [];
+    for (let i = 0; i < lines.length; i++) {
+        let params = null;
+        for (const pattern of headPatterns) {
+            const match = pattern.exec(lines[i]);
+            if (match) {
+                params = match[1] || "";
+                break;
+            }
+        }
+        if (params === null) continue;
+
+        const indent = lines[i].search(/\S/);
+        let end = lines.length - 1;
+        for (let j = i + 1; j < lines.length; j++) {
+            const lineIndent = lines[j].search(/\S/);
+            if (lineIndent >= 0 && /^\s*\}/.test(lines[j]) && lineIndent <= indent) {
+                end = j;
+                break;
+            }
+        }
+        scopes.push({
+            start: i,
+            end,
+            params: params
+                .split(",")
+                .map((param) => param.trim().replace(/^[\.{]*/, "").split("=")[0].trim())
+                .filter(Boolean),
+        });
+    }
+    return scopes;
+}
+
+function lintOfficeJs(source) {
+    const lines = source.split("\n");
+    const problems = [];
+    const seen = new Set();
+    const loadPattern = /(?:([\w$]+)\s*=\s*)?([\w$.\[\]]+)\.load\(\s*(['\"])([^'\"]*)\3/g;
+
+    const report = (lineIndex, message) => {
+        const key = lineIndex + ":" + message;
+        if (seen.has(key)) return;
+        seen.add(key);
+        problems.push({ line: lineIndex + 1, text: lines[lineIndex].trim(), message });
+    };
+
+    const tokensOf = (load) => {
+        const tokens = [load[2]];
+        if (load[1]) tokens.push(load[1]);
+        // "layouts/items/name" also makes master.layouts.items readable.
+        (load[4].match(/([\w$]+)\/items\b/g) || []).forEach((segment) => tokens.push(segment.split("/")[0] + ".items"));
+        return tokens;
+    };
+
+    // A helper may read a collection that its caller loaded, so a token loaded earlier in the file
+    // counts as loaded; the ordering rule that actually catches bugs is the per-scope one below.
+    const firstLoad = new Map();
+    lines.forEach((line, index) => {
+        for (const load of line.replace(/\/\/.*$/, "").matchAll(loadPattern)) {
+            for (const token of tokensOf(load)) {
+                if (!firstLoad.has(token)) firstLoad.set(token, index);
+            }
+        }
+    });
+
+    for (const scope of officeJsScopes(lines)) {
+        const pending = new Set();        // loaded, but no awaited sync has delivered it yet
+        const readable = new Set();       // loaded and synced
+        const pendingValues = new Set();  // getCount() results that are not synced yet
+
+        // The head line itself belongs to the enclosing scope (it may only be a head part-way
+        // through, e.g. `slide.shapes.items.some((shape) => {`).
+        for (let i = scope.start + 1; i <= scope.end; i++) {
+            const code = lines[i].replace(/\/\/.*$/, "");
+            if (!/\S/.test(code)) continue;
+
+            const syncCall = /context\.sync\(\)/.test(code);
+            if (syncCall && !/await\s+context\.sync\(\)/.test(code)) {
+                report(i, "context.sync() must be awaited, otherwise nothing is loaded yet");
+            }
+
+            // A load also makes the variable it is assigned to refer to that collection.
+            const loadedTargets = new Set();
+            for (const load of code.matchAll(loadPattern)) {
+                loadedTargets.add(load[2]);
+                for (const token of tokensOf(load)) pending.add(token);
+            }
+
+            const count = /(?:const|let|var)\s+([\w$]+)\s*=\s*[\w$.\[\]]+\.getCount\(\s*\)/.exec(code);
+            if (count) pendingValues.add(count[1]);
+
+            const readPattern = /([\w$.\[\]]+)\.items\b/g;
+            for (const read of code.matchAll(readPattern)) {
+                const target = read[1];
+                const root = target.split(/[.[]/)[0];
+                if (scope.params.includes(root) || loadedTargets.has(target)) continue;
+                const tokens = [target, target.split(".").slice(-1)[0] + ".items"];
+                if (tokens.some((token) => pending.has(token))) {
+                    report(i, target + ".items is read after load() but before an awaited context.sync()");
+                } else if (!tokens.some((token) => readable.has(token)) && tokens.every((token) => !firstLoad.has(token) || firstLoad.get(token) > i)) {
+                    report(i, target + ".items is read without load()");
+                }
+            }
+
+            const value = /\b([\w$]+)\.value\b/.exec(code);
+            if (value && pendingValues.has(value[1])) {
+                report(i, value[1] + ".value is read before the getCount() request was synced");
+            }
+
+            if (syncCall) {
+                pending.forEach((token) => readable.add(token));
+                pending.clear();
+                pendingValues.clear();
+            }
+        }
+    }
+    return problems;
+}
+
+console.log("Office.js usage lint");
+OFFICEJS_LINT_FIXTURES.forEach((fixture) => {
+    const found = lintOfficeJs(fixture.source);
+    if (fixture.expect === null) {
+        check("fixture stays clean: " + fixture.name, found.length === 0, JSON.stringify(found));
+    } else {
+        check(
+            "fixture is flagged: " + fixture.name,
+            found.some((problem) => (problem.message + " " + problem.text).includes(fixture.expect)),
+            JSON.stringify(found),
+        );
+    }
+});
+
+["shared/frontend_core.js", "zotero-addon/www/frontend_core.js"].forEach((relative) => {
+    const file = path.join(__dirname, "..", relative);
+    if (!fs.existsSync(file)) return;
+    const problems = lintOfficeJs(fs.readFileSync(file, "utf8"));
+    check(
+        "no Office.js load/sync misuse in " + relative,
+        problems.length === 0,
+        problems.map((problem) => problem.line + ": " + problem.message).join("; "),
+    );
+});
+
 console.log("");
 console.log("Passed: " + passed + "   Failed: " + failures.length);
 if (failures.length > 0) {
