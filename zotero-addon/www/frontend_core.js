@@ -417,7 +417,9 @@ async function collectShapeCitationRecords(context, slide) {
       if (records.length === 0) continue;
       const empty = text.trim() === "";
       records.forEach((record) => {
-        const target = empty ? gone : live;
+        // An entry without a label cannot be judged, so it counts as still there.
+        const stillThere = !empty && (record.label === "" || findCitationSpan(text, record.label) !== null);
+        const target = stillThere ? live : gone;
         if (target.indexOf(record.key) < 0) target.push(record.key);
       });
     }
@@ -427,6 +429,57 @@ async function collectShapeCitationRecords(context, slide) {
     reportToHelper("shape citation records failed" + describeError(error));
     return { live: live, gone: gone, failed: true };
   }
+}
+
+/* Finds the citation's text in a shape, tolerating the edits a user makes to it: the exact text
+   when it is still there, otherwise the parenthesised group that still looks like it (same year, and
+   as many of the same words as possible). A citation that was deleted leaves no such group. */
+function findCitationSpan(text, label) {
+  const haystack = String(text || "");
+  const wanted = String(label || "").trim();
+  if (wanted === "") return null;
+
+  const exact = haystack.indexOf(wanted);
+  if (exact >= 0) {
+    // Take the parentheses around it with it ("(Smith, 2020, p. 42)"), but only when they hold
+    // little else - "(see Smith, 2020)" is still the citation, "(Smith, 2020; Doe, 2019)" is not.
+    const open = haystack.lastIndexOf("(", exact);
+    const close = haystack.indexOf(")", exact + wanted.length);
+    if (open >= 0 && close >= 0 && close - open <= wanted.length + 12 && haystack.slice(open + 1, exact).trim().length <= 6) {
+      return { start: open, end: close + 1 };
+    }
+    return { start: exact, end: exact + wanted.length };
+  }
+
+  const year = (wanted.match(/\b(1[5-9]\d{2}|20\d{2})\b/) || [])[0] || "";
+  const words = (wanted.match(/[\p{L}][\p{L}'’.-]*/gu) || [])
+    .filter((word) => word.length > 2 && word !== year)
+    .map((word) => word.toLowerCase());
+
+  const candidates = [];
+  const pattern = /\([^()]*\)/g;
+  let match = pattern.exec(haystack);
+  while (match) {
+    candidates.push({ start: match.index, end: match.index + match[0].length, text: match[0] });
+    match = pattern.exec(haystack);
+  }
+  if (candidates.length === 0 && haystack.trim().length > 0 && haystack.length <= 200) {
+    candidates.push({ start: 0, end: haystack.length, text: haystack });
+  }
+
+  let best = null;
+  let bestScore = 0;
+  candidates.forEach((candidate) => {
+    const lower = candidate.text.toLowerCase();
+    let score = year && lower.indexOf(year) >= 0 ? 2 : 0;
+    score += words.filter((word) => lower.indexOf(word) >= 0).length;
+    if (candidate.text.trim().length <= wanted.length + 8) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  });
+  return bestScore >= 2 ? best : null;
 }
 
 /* Tidies the text a citation left behind: no double spaces, no separator without a citation. */
@@ -955,9 +1008,16 @@ async function removeCitation(keyToRemove) {
         await context.sync();
 
         // The text goes with the key, otherwise the slide still shows a citation that the
-        // bibliography no longer lists.
+        // bibliography no longer lists - and if the text cannot be found, the key stays as well.
         if (removedEntry) {
           textRemoved = await removeCitationTextFromSlide(context, slide, removedEntry);
+          if (!textRemoved) {
+            slide.tags.add(
+              ZOTERO_TAG_KEY,
+              JSON.stringify(citations.map((entry) => ({ k: entry.key, l: entry.label, r: entry.recorded ? 1 : 0 }))),
+            );
+            await context.sync();
+          }
         }
       }
     });
@@ -967,7 +1027,7 @@ async function removeCitation(keyToRemove) {
     if (!textRemoved) {
       const note = document.createElement("p");
       note.className = "note";
-      note.textContent = "Only the key was removed - its citation text was not found on this slide.";
+      note.textContent = "Could not find this citation's text on the slide, so nothing was removed - delete the text in the slide and press x again.";
       document.getElementById("output").appendChild(note);
     }
   } catch (error) {
@@ -989,9 +1049,12 @@ async function removeCitationTextFromSlide(context, slide, entry) {
     const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
     if (!textRange || !textRange.text) continue;
 
-    const result = removeCitationText(textRange.text, entry.label || entry.key);
-    const cleaned = repairCitationText(result.removed ? result.text : textRange.text, [entry.key]);
-    if (!result.removed && cleaned === textRange.text) continue;
+    const span = findCitationSpan(textRange.text, entry.label || entry.key);
+    const afterRemoval = span
+      ? textRange.text.slice(0, span.start) + textRange.text.slice(span.end)
+      : null;
+    if (afterRemoval === null) continue;
+    const cleaned = tidyCitationText(repairCitationText(afterRemoval, [entry.key]));
     textRange.text = cleaned;
     await context.sync();
     logInfo("removed the citation text of", entry.key);

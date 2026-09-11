@@ -429,6 +429,21 @@ function lintOfficeJs(source) {
     return problems;
 }
 
+console.log("finding a citation's text after edits");
+const spanText = (text, label) => {
+    const span = sandbox.findCitationSpan(text, label);
+    return span ? text.slice(span.start, span.end) : null;
+};
+check("the exact text is found, parentheses included", spanText("Text (Smith, 2020) more", smithLabel) === "(Smith, 2020)");
+check("an edited author is still found", spanText("Text (Smyth et al., 2020) more", smithLabel) === "(Smyth et al., 2020)", JSON.stringify(spanText("Text (Smyth et al., 2020) more", smithLabel)));
+check("an edited year keeps the citation findable by its words", spanText("Text (Smith, 1999) more", smithLabel) === "(Smith, 1999)");
+check("an added page number is tolerated", spanText("(Smith, 2020, p. 42)", smithLabel) === "(Smith, 2020, p. 42)");
+check("a different citation is not claimed", spanText("(Doe, 2019)", smithLabel) === null);
+check("a deleted citation is not found", spanText("Nothing here at all", smithLabel) === null);
+check("a citation without a label is not found", spanText("(Smith, 2020)", "") === null);
+check("a citation in a bare text box is found", spanText("Smith, 2020", smithLabel) === "Smith, 2020");
+check("the best of several groups wins", spanText("(Doe, 2019) and (Smith, 2020)", smithLabel) === "(Smith, 2020)", JSON.stringify(spanText("(Doe, 2019) and (Smith, 2020)", smithLabel)));
+
 console.log("Office.js usage lint");
 OFFICEJS_LINT_FIXTURES.forEach((fixture) => {
     const found = lintOfficeJs(fixture.source);
