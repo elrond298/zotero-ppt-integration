@@ -4,6 +4,11 @@ Cite Zotero items in PowerPoint: pick a reference from Zotero, drop it on a slid
 bibliography at the end. Everything runs on your own machine — Zotero, a small local helper, and a
 PowerPoint task pane. Nothing is uploaded anywhere.
 
+<img src="docs/images/task-pane.png" alt="The Zotero task pane in PowerPoint: citation buttons, style and text size, Generate Bibliography, the slide's citations and the list of all citations" width="400">
+
+*The task pane, shown with example content. Left-click a row under `All citations` to jump to that
+slide; the red `x` removes that citation's text and its entry.*
+
 ## What you get
 
 - **Insert citations from Zotero.** A task pane in PowerPoint with two buttons: open Zotero's picker,
