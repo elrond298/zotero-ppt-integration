@@ -60,7 +60,9 @@ Use `-NoAutostart` if you prefer to start the server by hand with
 ### How to use the add-in
 
 1. Restart PowerPoint after installing (Office reads the add-in registration at start-up).
-2. On the Home tab, open `Zotero Tools > Open Zotero Pane`.
+2. Start it from the Add-ins tab: `Home > Add-ins (加载项) > Zotero Citations`. The `Zotero Tools`
+   group (with `Open Zotero Pane`) appears on the Home tab while the add-in is loaded, but Office does
+   not pin sideloaded add-ins there permanently (see Troubleshooting).
 3. Select a slide.
 4. Click `Add Citation (Pop up)` to open the Zotero picker.
 5. Click `Add Citation (Selected)` to cite the currently selected Zotero item(s) directly.
@@ -77,6 +79,10 @@ Use `-NoAutostart` if you prefer to start the server by hand with
 
 - **The pane stays blank.** Read `%LOCALAPPDATA%\ZoteroCitations\server.log`, and open
   `https://localhost:23000/taskpane.html` in a browser to see what the add-in receives.
+- **The add-in is not pinned to the Home tab.** Office keeps sideloaded (developer) add-ins in
+  `Home > Add-ins` (加载项); starting it there opens the pane and adds the `Zotero Tools` group for that
+  session. A permanently pinned button needs Microsoft's deployment path (AppSource or the Microsoft 365
+  admin center), which requires the add-in files to be hosted on a public HTTPS URL.
 - **"Proxy not running" in the pane.** The helper server is not running: start
   `%LOCALAPPDATA%\ZoteroCitations\run-server.cmd` (visible console, useful for logs) or re-run `install.ps1`.
 - **`FATAL: Could not bind to port ...`** means another copy of the server is already running.
