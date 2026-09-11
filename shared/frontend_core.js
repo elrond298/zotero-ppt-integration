@@ -468,8 +468,6 @@ async function displayCitationsFromSlide() {
         try {
           const keysArray = JSON.parse(zoteroTag.value);
           if (Array.isArray(keysArray) && keysArray.length > 0) {
-            const header = document.createElement("p");
-            header.textContent = "Citations on this slide:";
             const list = document.createElement("ul");
 
             keysArray.forEach((key) => {
@@ -489,7 +487,7 @@ async function displayCitationsFromSlide() {
               list.appendChild(listItem);
             });
 
-            outputElement.replaceChildren(header, list);
+            outputElement.replaceChildren(list);
           } else {
             outputElement.textContent = "No Zotero citations found on this slide.";
           }

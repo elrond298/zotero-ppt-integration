@@ -227,7 +227,7 @@ while ($true) {
     Write-Host "Static files over HTTPS"
     $pane = Invoke-Https -Uri "$site/"
     Assert-Equal "GET / status" 200 $pane.Status
-    Assert-Match "GET / serves the pane" "Zotero Citation Manager" $pane.Content
+    Assert-Match "GET / serves the pane" "Add Citation" $pane.Content
     Assert-Equal "GET / is not cached" "no-store" $pane.Headers["Cache-Control"]
 
     foreach ($path in @("/taskpane.html", "/frontend_core.js", "/style.css", "/commands.html", "/assets/icon-32.png")) {

@@ -12,37 +12,35 @@
 </head>
 
 <body>
-    <div class="container">
-        <h2>Zotero Citation Manager</h2>
+    <!-- No wrapper and no page title: the pane header already names the add-in, and the narrow
+         pane needs every pixel of width. Buttons stack because two columns would clip. -->
+    <div id="status" class="status" aria-live="polite">Checking Zotero connection...</div>
 
-        <div id="status" class="status" aria-live="polite">Checking Zotero connection...</div>
+    <div class="button-group stack">
+        <button id="add-citation" class="ms-Button primary">
+            <span class="ms-Button-label">Add Citation (Pop up)</span>
+        </button>
+        <button id="add-citation-selected" class="ms-Button secondary">
+            <span class="ms-Button-label">Add Citation (Selected)</span>
+        </button>
+        <label class="control-field" for="bibliography-style">
+            <span class="control-label">Bibliography Style</span>
+            <select id="bibliography-style" class="control-select">
+                <option value="journal-of-geophysical-research-atmospheres">Journal of Geophysical Research: Atmospheres</option>
+                <option value="apa">APA</option>
+                <option value="chicago-author-date">Chicago Author-Date</option>
+                <option value="ieee">IEEE</option>
+                <option value="modern-language-association">MLA</option>
+            </select>
+        </label>
+        <button id="generate-bibliography" class="ms-Button accent">
+            <span class="ms-Button-label">Generate Bibliography</span>
+        </button>
+    </div>
 
-        <div class="button-group">
-            <button id="add-citation" class="ms-Button primary">
-                <span class="ms-Button-label">Add Citation (Pop up)</span>
-            </button>
-            <button id="add-citation-selected" class="ms-Button secondary">
-                <span class="ms-Button-label">Add Citation (Selected)</span>
-            </button>
-            <label class="control-field" for="bibliography-style">
-                <span class="control-label">Bibliography Style</span>
-                <select id="bibliography-style" class="control-select">
-                    <option value="journal-of-geophysical-research-atmospheres">Journal of Geophysical Research: Atmospheres</option>
-                    <option value="apa">APA</option>
-                    <option value="chicago-author-date">Chicago Author-Date</option>
-                    <option value="ieee">IEEE</option>
-                    <option value="modern-language-association">MLA</option>
-                </select>
-            </label>
-            <button id="generate-bibliography" class="ms-Button accent">
-                <span class="ms-Button-label">Generate Bibliography</span>
-            </button>
-        </div>
-
-        <div class="output-section">
-            <h3>Slide Citations</h3>
-            <div id="output" class="output-content" aria-live="polite"></div>
-        </div>
+    <div class="output-section">
+        <h3>Slide Citations</h3>
+        <div id="output" class="output-content" aria-live="polite"></div>
     </div>
 
     <script src="frontend_core.js"></script>

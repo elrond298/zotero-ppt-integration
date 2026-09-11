@@ -1,4 +1,12 @@
 /* Unified theme tokens with explicit light/dark support. */
+
+/* The task pane is narrow, so padding must never push content out of the pane. */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
 :root {
     --font-sans: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
     --font-mono: Consolas, Monaco, 'SFMono-Regular', 'Courier New', monospace;
@@ -89,13 +97,27 @@ h1,
     font-weight: 600;
 }
 
+/* Connection status: a coloured dot plus text, so the state is readable at a glance. */
 .status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 12px;
-    margin: -4px 0 10px;
+    margin: 0 0 12px;
     color: var(--c-text-muted);
 }
 
-.status.ok { color: var(--c-accent); }
+.status::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: currentColor;
+    flex: none;
+}
+
+/* Fixed status colours (the dot follows the text colour). */
+.status.ok { color: #107c10; }
 .status.error { color: var(--c-danger); }
 
 .ms-Button {
@@ -105,7 +127,7 @@ h1,
     --btn-text: var(--c-text);
     --btn-border: var(--c-border);
     display: inline-block;
-    padding: 8px 16px 9px;
+    padding: 9px 14px 10px;
     font: 500 13px/1 var(--font-sans);
     letter-spacing: .3px;
     color: var(--btn-text);
@@ -156,23 +178,32 @@ h1,
     align-items: center;
 }
 
+/* Icons are masks painted with currentColor, so they stay visible on every button colour. */
 .ms-Button-label::before {
     content: "";
     display: inline-block;
     width: 16px;
     height: 16px;
-    margin-right: 10px;
-    background-size: contain;
-    background-repeat: no-repeat;
+    margin-right: 8px;
+    flex: none;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
 }
 
 .ms-Button.primary .ms-Button-label::before,
 .ms-Button.secondary .ms-Button-label::before {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>');
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>');
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>');
 }
 
 .ms-Button.accent .ms-Button-label::before {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>');
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>');
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>');
 }
 
 .ms-Button:hover:not(:disabled) { background: var(--btn-bg-hover); text-decoration: none; }
@@ -292,11 +323,16 @@ h1,
     padding-bottom: 10px;
 }
 
+/* Two columns in a wide host (Script Lab); the narrow task pane adds .stack for one column. */
 .button-group {
-    margin-bottom: 25px;
+    margin-bottom: 18px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+}
+
+.button-group.stack {
+    grid-template-columns: 1fr;
 }
 
 .control-field {
@@ -349,8 +385,11 @@ h1,
     padding-top: 15px;
 }
 
+/* Section heading: quiet and compact, so the citations themselves stand out. */
 .output-section h3 {
-    color: var(--c-text);
-    margin-bottom: 10px;
-    font-size: 1.1em;
+    color: var(--c-text-muted);
+    margin: 0 0 8px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .7px;
 }
