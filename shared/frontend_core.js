@@ -761,29 +761,33 @@ async function addBibliographySlideFromMaster(context, slides) {
 
 /* An existing References slide is refreshed in place - first the one we tagged, then one whose
    title already says "References" - so pressing Generate twice never leaves two of them. */
-async function findBibliographySlide(slides) {
+async function findBibliographySlide(context, slides) {
   const tagged = slides.items.find((slide) =>
     slide.tags.items.some((tag) => tag.key === ZOTERO_BIBLIOGRAPHY_TAG),
   );
   if (tagged) return tagged;
 
-  for (const slide of slides.items) {
-    try {
+  // The shape text must be loaded and synced before it can be read below.
+  try {
+    for (const slide of slides.items) {
       slide.shapes.load("items/name,items/textFrame/textRange/text");
-    } catch (error) {
-      logWarn("Could not inspect a slide while looking for the bibliography slide", error);
     }
+    await context.sync();
+  } catch (error) {
+    logWarn("Could not look for an existing References slide", error);
+    return null;
   }
-  // The shape loads queue on the caller's context; the next sync() reads them.
 
-  return slides.items.find((slide) =>
+  const byTitle = slides.items.find((slide) =>
     slide.shapes.items.some((shape) => {
       const textFrame = shape.textFrame;
       const shapeText = textFrame && textFrame.textRange ? textFrame.textRange.text || "" : "";
       return shapeText.trim().toLowerCase() === BIBLIOGRAPHY_TITLE.toLowerCase();
     }),
   );
+  return byTitle || null;
 }
+
 
 async function fillBibliographySlide(context, slide, bibliography) {
   slide.shapes.load("items/name");
@@ -831,8 +835,7 @@ async function writeBibliographySlide(bibliography) {
     }
     await context.sync();
 
-    const existing = await findBibliographySlide(slides);
-    await context.sync();
+    const existing = await findBibliographySlide(context, slides);
 
     const target = existing || (await addBibliographySlideFromMaster(context, slides));
     target.tags.add(ZOTERO_BIBLIOGRAPHY_TAG, "1");
