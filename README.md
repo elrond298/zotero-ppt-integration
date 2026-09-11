@@ -203,7 +203,6 @@ when a collection is read before its `load()` was delivered by an awaited `conte
 that made Generate Bibliography fail once in PowerPoint. The lint ships with fixtures that must be
 flagged (they are part of the test), and reintroducing the load/sync bug in the frontend makes it fail
 on the real file (27 checks). Then restart PowerPoint and open the pane to check the add-in itself.
-PowerPoint and open the pane to check the add-in itself.
 
 ### Implementation notes
 
