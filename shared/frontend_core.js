@@ -10,9 +10,11 @@ const BIBLIOGRAPHY_TITLE = "References";
 const BIBLIOGRAPHY_CONTINUATION_TITLE = "References (cont.)";
 const BIBLIOGRAPHY_SPLIT_STORAGE_KEY = "zotero-ppt:split-bibliography";
 const DEFAULT_SPLIT_BIBLIOGRAPHY = true;
-/* Fallback when PowerPoint cannot report how tall the text is: about 112 characters fit per
-   line and about 21 lines fit on a slide, so this leaves headroom. */
-const BIBLIOGRAPHY_CHARS_PER_SLIDE = 1600;
+const BIBLIOGRAPHY_FONT_SIZE = 14;
+/* Fallback when PowerPoint does not report a text height that reacts to the text: about 120
+   characters fit per line and about 15 lines fit on a slide, so this leaves headroom. */
+const BIBLIOGRAPHY_CHARS_PER_SLIDE = 1800;
+const BIBLIOGRAPHY_FALLBACK_BUDGET = 380;
 /* Set to false the first time Slide.moveTo fails, so unsupported builds are not asked again. */
 let canMoveSlides = true;
 
@@ -958,7 +960,7 @@ async function fillBibliographySlide(context, slide, page, title) {
 
   const textRange = shapes.contentShape.textFrame.textRange;
   textRange.text = page.text;
-  textRange.font.size = 14;
+  textRange.font.size = BIBLIOGRAPHY_FONT_SIZE;
   applyBibliographyFormatting(textRange, page.runs);
   shapes.contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
   await context.sync();
@@ -982,46 +984,86 @@ async function splitBibliographyIntoPages(context, slide, bibliography, splitAcr
   }
 }
 
+/* Measures how much of the bibliography fits on one slide by putting the text into a scratch text
+   box of the same width (PowerPoint grows a text box to fit its text) and comparing that height
+   with the room one slide offers. Two things are deliberately not trusted: the content placeholder
+   on the slide, which may have grown to fit an earlier, longer bibliography, and a height that does
+   not react to the text at all - in either case the measurement is rejected and the caller falls
+   back to a character budget. */
 async function measureBibliographyPages(context, slide, entries) {
   const shapes = await findSlideTextShapes(context, slide, true);
   const contentShape = shapes.contentShape;
-  contentShape.load("height");
+  contentShape.load("name,height,width");
   await context.sync();
-  const budget = contentShape.height;
-  contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
 
-  const measure = async (candidate) => {
-    contentShape.textFrame.textRange.text = joinBibliographyEntries(candidate).text;
-    contentShape.load("height");
-    await context.sync();
-    return contentShape.height;
-  };
+  const budget = await slideTextBudget(context, slide, contentShape);
+  const ruler = slide.shapes.addTextBox("", { left: -3000, top: 0, width: contentShape.width, height: 40 });
+  ruler.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+  ruler.textFrame.textRange.font.size = BIBLIOGRAPHY_FONT_SIZE;
 
-  const pages = [];
-  let start = 0;
-  while (start < entries.length) {
-    const remaining = entries.slice(start);
-    let fits = 1;
-    if ((await measure(remaining)) <= budget + 1) {
-      fits = remaining.length;
-    } else {
-      let low = 1;
-      let high = remaining.length;
-      while (low <= high) {
-        const middle = Math.floor((low + high) / 2);
-        if ((await measure(remaining.slice(0, middle))) <= budget + 1) {
-          fits = Math.max(fits, middle);
-          low = middle + 1;
-        } else {
-          high = middle - 1;
+  try {
+    const measure = async (candidate) => {
+      ruler.textFrame.textRange.text = joinBibliographyEntries(candidate).text;
+      ruler.load("height");
+      slide.shapes.load("items/height");   // loading one property twice may not refresh it
+      await context.sync();
+      return ruler.height;
+    };
+
+    const allHeight = await measure(entries);
+    const oneHeight = await measure(entries.slice(0, 1));
+    const measured = "one=" + oneHeight + " all=" + allHeight + " budget=" + budget;
+    logInfo("bibliography text height:", measured);
+    reportToHelper("bibliography text height: " + measured);
+    if (!(oneHeight < allHeight)) {
+      throw new Error("the measured text height does not react to the text (" + measured + ")");
+    }
+
+    const pages = [];
+    let start = 0;
+    while (start < entries.length) {
+      const remaining = entries.slice(start);
+      let fits = 1;
+      if ((await measure(remaining)) <= budget + 1) {
+        fits = remaining.length;
+      } else {
+        let low = 1;
+        let high = remaining.length;
+        while (low <= high) {
+          const middle = Math.floor((low + high) / 2);
+          if ((await measure(remaining.slice(0, middle))) <= budget + 1) {
+            fits = Math.max(fits, middle);
+            low = middle + 1;
+          } else {
+            high = middle - 1;
+          }
         }
       }
+      logInfo("bibliography page holds entries", start, "to", start + fits - 1);
+      pages.push(joinBibliographyEntries(remaining.slice(0, fits)));
+      start += fits;
     }
-    logInfo("bibliography page holds entries", start, "to", start + fits - 1);
-    pages.push(joinBibliographyEntries(remaining.slice(0, fits)));
-    start += fits;
+    return pages;
+  } finally {
+    ruler.delete();
+    await context.sync();
   }
-  return pages;
+}
+
+/* The layout keeps the height the placeholder was designed with, which is the room a slide offers;
+   the slide's own placeholder may have grown to fit a previous bibliography. */
+async function slideTextBudget(context, slide, contentShape) {
+  try {
+    const layoutShapes = slide.layout.shapes;
+    layoutShapes.load("items/name,items/height");
+    await context.sync();
+    const match = layoutShapes.items.find((shape) => (shape.name || "") === (contentShape.name || ""));
+    if (match && match.height > 0) return match.height;
+  } catch (error) {
+    logWarn("Could not read the layout height for the bibliography", error);
+  }
+  if (contentShape.height > 0) return contentShape.height;
+  return BIBLIOGRAPHY_FALLBACK_BUDGET;
 }
 
 /* The fallback splitter: no PowerPoint measurement, just a character budget per slide. Entries are
