@@ -148,10 +148,29 @@ while ($true) {
             if ($builder.ToString() -match "`r`n`r`n") { break }
         }
         $request = $builder.ToString()
+
+        # Read the request body too, so the test can check what the helper asked BBT for.
+        $requestBody = ""
+        $contentLength = 0
+        if ($request -match "(?im)^content-length:\s*(\d+)") { $contentLength = [int]$Matches[1] }
+        if ($contentLength -gt 0) {
+            $bodyStart = $request.IndexOf("`r`n`r`n") + 4
+            if ($bodyStart -gt 3 -and $request.Length -gt $bodyStart) { $requestBody = $request.Substring($bodyStart) }
+            while ($requestBody.Length -lt $contentLength) {
+                $more = $stream.Read($buffer, 0, $buffer.Length)
+                if ($more -le 0) { break }
+                $requestBody += [System.Text.Encoding]::ASCII.GetString($buffer, 0, $more)
+            }
+        }
+
         if ($request -match "/better-bibtex/cayw") {
             $body = '[{"citationKey":"smith2020","item":{"creators":[{"lastName":"Smith"}],"date":"2020"}}]'
         } elseif ($request -match "/better-bibtex/json-rpc") {
-            $body = '{"jsonrpc":"2.0","result":"Smith, J. (2020). A title. Journal."}'
+            if ($requestBody -match '"contentType"\s*:\s*"html"') {
+                $body = '{"jsonrpc":"2.0","result":"HTML bibliography"}'
+            } else {
+                $body = '{"jsonrpc":"2.0","result":"Smith, J. (2020). A title. Journal."}'
+            }
         } else {
             $body = '{"jsonrpc":"2.0","error":{"message":"unexpected endpoint"}}'
         }
@@ -206,6 +225,11 @@ while ($true) {
     $bibliography = Invoke-Endpoint -Uri "$api/bibliography" -Method "POST" -Body '{"keys":["smith2020"],"style":"apa"}'
     Assert-Equal "POST /bibliography status" 200 $bibliography.Status
     Assert-Match "POST /bibliography body" "A title" $bibliography.Content
+
+    # format "html" must reach BBT as contentType html (real italics for the bibliography).
+    $htmlBibliography = Invoke-Endpoint -Uri "$api/bibliography" -Method "POST" -Body '{"keys":["smith2020"],"style":"apa","format":"html"}'
+    Assert-Equal "POST /bibliography with html format" 200 $htmlBibliography.Status
+    Assert-Match "html format reaches Better BibTeX" "HTML bibliography" $htmlBibliography.Content
 
     # The pane's JSON POST is preflighted; without these headers Chromium blocks it.
     $preflight = Invoke-Endpoint -Uri "$api/bibliography" -Method "OPTIONS"

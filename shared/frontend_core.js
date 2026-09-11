@@ -4,6 +4,8 @@ const HEALTH_ENDPOINT = "http://localhost:8000/health";
 const DEFAULT_BIBLIOGRAPHY_STYLE = "journal-of-geophysical-research-atmospheres";
 const BIBLIOGRAPHY_STYLE_STORAGE_KEY = "zotero-ppt:bibliography-style";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS";
+const ZOTERO_BIBLIOGRAPHY_TAG = "ZOTERO_BIBLIOGRAPHY";
+const BIBLIOGRAPHY_TITLE = "References";
 
 const LOG_LEVELS = {
   NONE: 0,
@@ -224,39 +226,60 @@ function handleRemoveClick(event) {
   }
 }
 
+async function collectCitationKeysFromSlides() {
+  const allCitationKeys = new Set();
+
+  await PowerPoint.run(async (context) => {
+    const slides = context.presentation.slides;
+    slides.load("items");
+    await context.sync();
+
+    for (const slide of slides.items) {
+      slide.tags.load("key, value");
+    }
+    await context.sync();
+
+    for (const slide of slides.items) {
+      const zoteroTag = slide.tags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
+      if (zoteroTag) {
+        try {
+          const keysArray = JSON.parse(zoteroTag.value);
+          if (Array.isArray(keysArray)) {
+            keysArray.forEach((key) => allCitationKeys.add(key));
+          }
+        } catch (error) {
+          logWarn("Could not parse citation keys on a slide", error);
+        }
+      }
+    }
+  });
+
+  return Array.from(allCitationKeys);
+}
+
+/* A key that BBT cannot resolve (renamed or deleted item) renders as nothing, so every key is
+   checked on its own. A failed check is not reported as a missing key. */
+async function findMissingCitationKeys(keys, style) {
+  const results = await Promise.all(
+    keys.map(async (key) => {
+      try {
+        const text = await fetchBibliographyFromServer([key], style, "text");
+        return typeof text === "string" && text.trim().length > 0 ? null : key;
+      } catch (error) {
+        logWarn("Could not check citation key", key, error);
+        return null;
+      }
+    }),
+  );
+  return results.filter((key) => key !== null);
+}
+
 async function handleGenerateBibliography() {
   const outputElement = document.getElementById("output");
   outputElement.textContent = "Generating bibliography...";
 
   try {
-    const allCitationKeys = new Set();
-
-    await PowerPoint.run(async (context) => {
-      const slides = context.presentation.slides;
-      slides.load("items");
-      await context.sync();
-
-      for (const slide of slides.items) {
-        slide.tags.load("key, value");
-      }
-      await context.sync();
-
-      for (const slide of slides.items) {
-        const zoteroTag = slide.tags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
-        if (zoteroTag) {
-          try {
-            const keysArray = JSON.parse(zoteroTag.value);
-            if (Array.isArray(keysArray)) {
-              keysArray.forEach((key) => allCitationKeys.add(key));
-            }
-          } catch (error) {
-            logWarn("Could not parse citation keys on a slide", error);
-          }
-        }
-      }
-    });
-
-    const uniqueKeys = Array.from(allCitationKeys);
+    const uniqueKeys = await collectCitationKeysFromSlides();
     log("Found unique citation keys:", uniqueKeys);
 
     if (uniqueKeys.length === 0) {
@@ -264,10 +287,21 @@ async function handleGenerateBibliography() {
       return;
     }
 
-    const formattedBibliography = await fetchBibliographyFromServer(uniqueKeys, getSelectedBibliographyStyle());
-    await addBibliographySlide(formattedBibliography);
+    const style = getSelectedBibliographyStyle();
+    const missingKeys = await findMissingCitationKeys(uniqueKeys, style);
+    const bibliographyHtml = await fetchBibliographyFromServer(uniqueKeys, style, "html");
+    const bibliography = parseFormattedBibliography(bibliographyHtml);
 
-    outputElement.textContent = "Bibliography generated successfully!";
+    if (!bibliography.text) {
+      outputElement.textContent = "Zotero returned an empty bibliography.";
+      return;
+    }
+
+    await writeBibliographySlide(bibliography);
+
+    outputElement.textContent = missingKeys.length > 0
+      ? `Bibliography generated. Not found in Zotero: ${missingKeys.join(", ")}`
+      : "Bibliography generated successfully!";
   } catch (error) {
     logError("Error generating bibliography:", error);
     const detail = error && error.message ? " (" + error.message + ")" : "";
@@ -275,22 +309,51 @@ async function handleGenerateBibliography() {
   }
 }
 
+/* The Zotero picker's extra fields ("see ", "p. 42", suppress author) arrive next to the item or
+   inside it, so both are checked. */
+function pickerField(item, name) {
+  const sources = [item, item ? item.item : null];
+  for (const source of sources) {
+    if (!source) continue;
+    const value = source[name];
+    if (value !== undefined && value !== null && value !== "") {
+      return String(value);
+    }
+  }
+  return "";
+}
+
 function formatSingleCitation(item) {
   const creators = item.item.creators;
   const date = item.item.date || "";
   const year = extractYearFromDate(date);
 
-  let authorString = "Unknown Author";
-  if (creators && creators.length > 0) {
-    if (creators.length === 1) {
-      authorString = creators[0].lastName;
-    } else if (creators.length === 2) {
-      authorString = `${creators[0].lastName} & ${creators[1].lastName}`;
-    } else {
-      authorString = `${creators[0].lastName} et al.`;
+  const suppressAuthor = ["true", "1"].includes(
+    pickerField(item, "suppressAuthor") || pickerField(item, "suppress author"),
+  );
+  const locator = pickerField(item, "locator");
+  const prefix = pickerField(item, "prefix");
+  const suffix = pickerField(item, "suffix");
+
+  let citation = year;
+  if (!suppressAuthor) {
+    let authorString = "Unknown Author";
+    if (creators && creators.length > 0) {
+      if (creators.length === 1) {
+        authorString = creators[0].lastName;
+      } else if (creators.length === 2) {
+        authorString = `${creators[0].lastName} & ${creators[1].lastName}`;
+      } else {
+        authorString = `${creators[0].lastName} et al.`;
+      }
     }
+    citation = `${authorString}, ${year}`;
   }
-  return `${authorString}, ${year}`;
+
+  if (locator) citation += `, ${locator}`;
+  if (suffix) citation += `, ${suffix}`;
+  if (prefix) citation = `${prefix} ${citation}`;
+  return citation;
 }
 
 function extractYearFromDate(dateStr) {
@@ -319,13 +382,13 @@ function extractYearFromDate(dateStr) {
   return "n.d.";
 }
 
-async function fetchBibliographyFromServer(keys, style) {
+async function fetchBibliographyFromServer(keys, style, format) {
   const response = await fetch(BIB_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ keys, style }),
+    body: JSON.stringify({ keys, style, format: format || "text" }),
   });
 
   if (!response.ok) {
@@ -507,112 +570,281 @@ async function displayCitationsFromSlide() {
   }
 }
 
-async function addBibliographySlide(bibliographyText) {
-  const trimmedBibliographyText = bibliographyText.replace(/\s+$/, "");
+/* BBT is asked for HTML because that is the only way to get real italics, bold, sub- and
+   superscript out of Zotero. Only that small subset of tags is interpreted. */
+const BIBLIOGRAPHY_FORMAT_TAGS = {
+  i: "italic",
+  em: "italic",
+  b: "bold",
+  strong: "bold",
+  sub: "subscript",
+  sup: "superscript",
+  sc: "smallCaps",
+};
 
-  await PowerPoint.run(async function (context) {
-    const slideMasters = context.presentation.slideMasters.load("id, name, layouts/items/name, layouts/items/id");
-    await context.sync();
+const BIBLIOGRAPHY_LINE_BREAK_TAGS = { div: true, p: true, br: true, li: true, tr: true };
 
-    let targetMaster = slideMasters.items[0] || null;
-    let layoutId = null;
+const HTML_ENTITIES = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: "\"",
+  apos: "'",
+  ndash: "\u2013",
+  mdash: "\u2014",
+  hellip: "\u2026",
+  lsquo: "\u2018",
+  rsquo: "\u2019",
+  ldquo: "\u201c",
+  rdquo: "\u201d",
+  times: "\u00d7",
+};
 
-    outer: for (const master of slideMasters.items) {
-      for (const layout of master.layouts.items) {
-        const layoutName = (layout.name || "").toLowerCase();
-        if (layoutName === "title and content" || (layoutName.includes("title") && layoutName.includes("content"))) {
-          targetMaster = master;
-          layoutId = layout.id;
-          break outer;
+function decodeHtmlEntities(text) {
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (match, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (match, code) => String.fromCodePoint(parseInt(code, 10)))
+    .replace(/&([a-z]+);/gi, (match, name) =>
+      Object.prototype.hasOwnProperty.call(HTML_ENTITIES, name.toLowerCase())
+        ? HTML_ENTITIES[name.toLowerCase()]
+        : match,
+    );
+}
+
+/* Turns the HTML bibliography into plain text plus the formatting runs that index into it,
+   where the formatting is the flag set that must be applied to that slice of text. */
+function parseFormattedBibliography(html) {
+  const runs = [];
+  const openFlags = [];
+  let text = "";
+  let pending = "";
+  let pendingFormat = null;
+
+  const flush = () => {
+    if (pending.length > 0 && pendingFormat) {
+      runs.push({ start: text.length - pending.length, length: pending.length, format: pendingFormat });
+    }
+    pending = "";
+  };
+
+  const append = (chunk, format) => {
+    if (chunk.length === 0) return;
+    const formatKey = format ? JSON.stringify(format) : "";
+    const pendingKey = pendingFormat ? JSON.stringify(pendingFormat) : "";
+    if (formatKey !== pendingKey) {
+      flush();
+      pendingFormat = format;
+    }
+    text += chunk;
+    pending += chunk;
+  };
+
+  const tokens = String(html || "").match(/<[^>]*>|[^<]+/g) || [];
+  for (const token of tokens) {
+    if (token.charAt(0) === "<") {
+      const tag = /^<\/?\s*([a-zA-Z0-9]+)/.exec(token);
+      if (!tag) continue;
+      const name = tag[1].toLowerCase();
+      const closing = token.indexOf("</") === 0;
+
+      if (BIBLIOGRAPHY_LINE_BREAK_TAGS[name]) {
+        if (closing || name === "br") {
+          flush();
+          if (!text.endsWith("\n")) append("\n", null);
         }
+        continue;
+      }
+
+      if (name === "span") {
+        // Only small caps matters; </span> closes the matching <span>, whatever it pushed.
+        if (closing) {
+          const spanIndex = openFlags.lastIndexOf("smallCaps");
+          if (spanIndex >= 0) openFlags.splice(spanIndex, 1);
+        } else if (/small-caps/i.test(token)) {
+          openFlags.push("smallCaps");
+        }
+        continue;
+      }
+
+      const flag = BIBLIOGRAPHY_FORMAT_TAGS[name];
+      if (!flag) continue;
+
+      if (closing) {
+        const index = openFlags.lastIndexOf(flag);
+        if (index >= 0) openFlags.splice(index, 1);
+      } else if (token.indexOf("/>") !== token.length - 2) {
+        openFlags.push(flag);
+      }
+      continue;
+    }
+
+    const format = {};
+    for (const flag of openFlags) {
+      format[flag] = true;
+    }
+    append(decodeHtmlEntities(token), openFlags.length > 0 ? format : null);
+  }
+  flush();
+
+  return trimFormattedText(text, runs);
+}
+
+/* Drops surrounding whitespace while keeping the run offsets pointing at the same characters. */
+function trimFormattedText(text, runs) {
+  const leading = text.length - text.replace(/^\s+/, "").length;
+  const trimmed = text.replace(/^\s+/, "").replace(/\s+$/, "");
+  const end = leading + trimmed.length;
+  const adjusted = [];
+  for (const run of runs) {
+    const start = Math.max(run.start, leading);
+    const stop = Math.min(run.start + run.length, end);
+    if (stop > start) {
+      adjusted.push({ start: start - leading, length: stop - start, format: run.format });
+    }
+  }
+  return { text: trimmed, runs: adjusted };
+}
+
+function applyBibliographyFormatting(textRange, runs) {
+  for (const run of runs) {
+    const substring = textRange.getSubstring(run.start, run.length);
+    if (!substring) continue;
+    const font = substring.font;
+    if (run.format.italic) font.italic = true;
+    if (run.format.bold) font.bold = true;
+    if (run.format.subscript) font.subscript = true;
+    if (run.format.superscript) font.superscript = true;
+    if (run.format.smallCaps) font.smallCaps = true;
+  }
+}
+
+async function addBibliographySlideFromMaster(context, slides) {
+  const slideMasters = context.presentation.slideMasters.load("id, name, layouts/items/name, layouts/items/id");
+  await context.sync();
+
+  let targetMaster = slideMasters.items[0] || null;
+  let layoutId = null;
+
+  outer: for (const master of slideMasters.items) {
+    for (const layout of master.layouts.items) {
+      const layoutName = (layout.name || "").toLowerCase();
+      if (layoutName === "title and content" || (layoutName.includes("title") && layoutName.includes("content"))) {
+        targetMaster = master;
+        layoutId = layout.id;
+        break outer;
       }
     }
+  }
 
-    if (!targetMaster) {
-      throw new Error("No slide master available for bibliography slide creation.");
-    }
+  if (!targetMaster) {
+    throw new Error("No slide master available for bibliography slide creation.");
+  }
+  if (!layoutId) {
+    layoutId = (targetMaster.layouts.items[1] && targetMaster.layouts.items[1].id) || null;
+  }
+  if (!layoutId && targetMaster.layouts.items[0]) {
+    layoutId = targetMaster.layouts.items[0].id;
+  }
 
-    if (!layoutId) {
-      layoutId = targetMaster.layouts.items[1]?.id || targetMaster.layouts.items[0]?.id || null;
-    }
+  const options = { slideMasterId: targetMaster.id };
+  if (layoutId) options.layoutId = layoutId;
+  slides.add(options);
+  await context.sync();
 
-    logInfo("loaded master");
-    const newSlideOptions = {
-      slideMasterId: targetMaster.id,
-      ...(layoutId ? { layoutId } : {}),
-    };
+  const count = slides.getCount();
+  await context.sync();
+  slides.load("items");
+  await context.sync();
+  return slides.getItemAt(count.value - 1);
+}
 
-    context.presentation.slides.add(newSlideOptions);
-    await context.sync();
-    logInfo("inserted slide");
+/* An existing References slide is refreshed in place - first the one we tagged, then one whose
+   title already says "References" - so pressing Generate twice never leaves two of them. */
+async function findBibliographySlide(slides) {
+  const tagged = slides.items.find((slide) =>
+    slide.tags.items.some((tag) => tag.key === ZOTERO_BIBLIOGRAPHY_TAG),
+  );
+  if (tagged) return tagged;
 
-    const newSlideIndex = context.presentation.slides.getCount();
-    await context.sync();
-
-    context.presentation.load("slides");
-    await context.sync();
-    const newSlide = context.presentation.slides.getItemAt(newSlideIndex.value - 1);
-    newSlide.load("id");
-    await context.sync();
-
+  for (const slide of slides.items) {
     try {
-      let titleShape = null;
-      let contentShape = null;
-
-      newSlide.shapes.load("items/name");
-      await context.sync();
-
-      for (const shape of newSlide.shapes.items) {
-        const name = (shape.name || "").toLowerCase();
-        if (!titleShape && name.includes("title")) {
-          titleShape = shape;
-        } else if (!contentShape && (name.includes("content") || name.includes("body"))) {
-          contentShape = shape;
-        }
-      }
-
-      if (!titleShape && newSlide.shapes.items[0]) {
-        titleShape = newSlide.shapes.items[0];
-      }
-      if (!contentShape && newSlide.shapes.items[1]) {
-        contentShape = newSlide.shapes.items[1];
-      }
-
-      if (!titleShape) {
-        throw new Error("No title shape found on new bibliography slide.");
-      }
-
-      titleShape.textFrame.textRange.text = "References";
-      titleShape.textFrame.textRange.font.size = 44;
-
-      if (!contentShape) {
-        throw new Error("No content shape found on new bibliography slide.");
-      }
-
-      contentShape.textFrame.textRange.text = trimmedBibliographyText;
-      contentShape.textFrame.textRange.font.size = 14;
-      contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+      slide.shapes.load("items/name,items/textFrame/textRange/text");
     } catch (error) {
-      logError("Error setting content:", error);
+      logWarn("Could not inspect a slide while looking for the bibliography slide", error);
+    }
+  }
+  // The shape loads queue on the caller's context; the next sync() reads them.
 
-      const titleShape = newSlide.shapes.addTextBox("References", {
-        left: 50,
-        top: 50,
-        width: 860,
-        height: 100,
-      });
-      titleShape.textFrame.textRange.font.size = 44;
+  return slides.items.find((slide) =>
+    slide.shapes.items.some((shape) => {
+      const textFrame = shape.textFrame;
+      const shapeText = textFrame && textFrame.textRange ? textFrame.textRange.text || "" : "";
+      return shapeText.trim().toLowerCase() === BIBLIOGRAPHY_TITLE.toLowerCase();
+    }),
+  );
+}
 
-      const contentShape = newSlide.shapes.addTextBox(trimmedBibliographyText, {
-        left: 50,
-        top: 150,
-        width: 860,
-        height: 350,
-      });
-      contentShape.textFrame.textRange.font.size = 14;
-      contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+async function fillBibliographySlide(context, slide, bibliography) {
+  slide.shapes.load("items/name");
+  await context.sync();
+
+  let titleShape = null;
+  let contentShape = null;
+  for (const shape of slide.shapes.items) {
+    const name = (shape.name || "").toLowerCase();
+    if (!titleShape && name.includes("title")) {
+      titleShape = shape;
+    } else if (!contentShape && (name.includes("content") || name.includes("body"))) {
+      contentShape = shape;
+    }
+  }
+  if (!titleShape && slide.shapes.items[0]) titleShape = slide.shapes.items[0];
+  if (!contentShape && slide.shapes.items[1]) contentShape = slide.shapes.items[1];
+
+  if (!titleShape) {
+    titleShape = slide.shapes.addTextBox(BIBLIOGRAPHY_TITLE, { left: 50, top: 50, width: 860, height: 100 });
+  }
+  titleShape.textFrame.textRange.text = BIBLIOGRAPHY_TITLE;
+  titleShape.textFrame.textRange.font.size = 44;
+
+  if (!contentShape) {
+    contentShape = slide.shapes.addTextBox("", { left: 50, top: 150, width: 860, height: 350 });
+  }
+  const textRange = contentShape.textFrame.textRange;
+  textRange.text = bibliography.text;
+  textRange.font.size = 14;
+  applyBibliographyFormatting(textRange, bibliography.runs);
+  contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+
+  await context.sync();
+}
+
+async function writeBibliographySlide(bibliography) {
+  await PowerPoint.run(async (context) => {
+    const slides = context.presentation.slides;
+    slides.load("items");
+    await context.sync();
+
+    for (const slide of slides.items) {
+      slide.tags.load("key, value");
+    }
+    await context.sync();
+
+    const existing = await findBibliographySlide(slides);
+    await context.sync();
+
+    const target = existing || (await addBibliographySlideFromMaster(context, slides));
+    target.tags.add(ZOTERO_BIBLIOGRAPHY_TAG, "1");
+    await context.sync();
+
+    const position = slides.items.indexOf(target) + 1;
+    if (position > 0 && position < slides.items.length) {
+      logInfo("moving the bibliography slide to the end", position);
+      target.moveTo(slides.items.length);
+      await context.sync();
     }
 
-    await context.sync();
+    await fillBibliographySlide(context, target, bibliography);
   });
 }

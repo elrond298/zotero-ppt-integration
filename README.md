@@ -66,14 +66,22 @@ for reading the log).
    group (with `Open Zotero Pane`) appears on the Home tab while the add-in is loaded, but Office does
    not pin sideloaded add-ins there permanently (see Troubleshooting).
 3. Select a slide.
-4. Click `Add Citation (Pop up)` to open the Zotero picker.
+4. Click `Add Citation (Pop up)` to open the Zotero picker. Anything you fill in there (`see `, `p. 42`,
+   suppress author) is written into the citation text.
 5. Click `Add Citation (Selected)` to cite the currently selected Zotero item(s) directly.
 6. Use the bibliography style selector to choose the output format.
-7. Click `Generate Bibliography` to create a `References` slide from all stored citation keys.
+7. Click `Generate Bibliography`. It refreshes the deck's References slide (or creates one) from all
+   stored citation keys, with the formatting the chosen style asks for (italics, bold, sub- and
+   superscript).
 
 ### Notes
 
 - The add-in reads and writes citation keys from slide metadata, not from slide text alone.
+- The References slide is tagged (`ZOTERO_BIBLIOGRAPHY`), so generating again rewrites that slide
+  instead of adding a second one; a slide whose title already is `References` is reused as well, and the
+  refreshed slide is moved to the end of the deck.
+- Citation keys that Zotero cannot resolve (renamed or deleted items) are listed in the pane instead of
+  being silently dropped from the bibliography.
 - If you remove citation text manually, remove the corresponding stored key from the task pane as well if you do not want it included in the bibliography.
 - The task pane status indicator reflects whether the local helper is reachable.
 - The helper is two listeners in one process: the JSON API on `http://localhost:8000` and the pane
@@ -184,18 +192,23 @@ Afterwards re-run `install.ps1` so PowerPoint gets the new files.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\test-helper.ps1
+node tools/test-frontend.js
 ```
 
-It compiles the helper, starts it against a stub Better BibTeX and checks the API, the HTTPS file
-server, the no-cache headers and path traversal handling (21 checks). Then restart PowerPoint and open
-the pane to check the add-in itself.
+The first compiles the helper, starts it against a stub Better BibTeX and checks the API, the CORS
+preflight, the HTTPS file server, the no-cache headers and path traversal handling (26 checks). The
+second runs the pane's pure helpers without a browser: the citation text builder (picker locator,
+prefix, suffix, suppress author) and the HTML-to-formatting-runs parser (21 checks). Then restart
+PowerPoint and open the pane to check the add-in itself.
 
 ### Implementation notes
 
 - `ZoteroHelper.exe` serves the JSON API on `http://localhost:8000` and the pane on `https://localhost:23000`.
 - `/zotero` proxies Better BibTeX CAYW calls (the Zotero picker can stay open for minutes, so the
   upstream call has a 10 minute ceiling).
-- `/bibliography` proxies Better BibTeX JSON-RPC bibliography generation.
+- `/bibliography` proxies Better BibTeX JSON-RPC bibliography generation; `format: "html"` in the
+  request becomes `contentType: html` upstream, which is what makes real italics/bold/sub/superscript
+  possible in the References slide.
 - `/health` is used by the UI status indicator.
 - Written in C# 5 on purpose: the compiler that ships with Windows is not a Roslyn compiler.
 - Bibliography output is based on citation keys stored in slide metadata.

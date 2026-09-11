@@ -278,10 +278,17 @@ class ZoteroHelper
     {
         List<string> keys = new List<string>();
         string style = "apa";
+        string contentType = "text";
         try
         {
             Dictionary<string, object> payload =
                 (Dictionary<string, object>)Serializer.DeserializeObject(request.Body);
+            // "html" gets the bibliography with real italics/bold/sub/superscript markup.
+            object formatValue;
+            if (payload.TryGetValue("format", out formatValue) && formatValue is string && (string)formatValue == "html")
+            {
+                contentType = "html";
+            }
             object styleValue;
             if (payload.TryGetValue("style", out styleValue) && styleValue is string && ((string)styleValue).Length > 0)
             {
@@ -313,7 +320,7 @@ class ZoteroHelper
 
         Dictionary<string, object> styleSpec = new Dictionary<string, object>();
         styleSpec.Add("id", style);
-        styleSpec.Add("contentType", "text");
+        styleSpec.Add("contentType", contentType);
         Dictionary<string, object> rpcCall = new Dictionary<string, object>();
         rpcCall.Add("jsonrpc", "2.0");
         rpcCall.Add("method", "item.bibliography");
