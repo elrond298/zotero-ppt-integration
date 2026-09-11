@@ -81,6 +81,10 @@ for reading the log).
 ### Notes
 
 - The add-in reads and writes citation keys from slide metadata, not from slide text alone.
+- Removing a citation's text (`x`) survives editing: the add-in looks for the text it wrote (inside the
+  parentheses) and, when that exact text is gone, for the parenthesised group that still looks like the
+  citation - same year, shared words, similar length. If nothing matches, nothing is removed and the
+  pane says so, rather than dropping the key while the citation stays in the slide.
 - Citations are written as plain text (`(Zuberi et al., 2001)`), and each one is recorded on the text
   box it was written into (`Shape.tags`, PowerPointApi 1.3) as well as on the slide. Whether a citation
   is still there is decided from that record, not from its wording: editing the author, the year or the
