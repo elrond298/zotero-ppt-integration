@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="TaskPaneApp">
   <Id>3bad9358-5068-4f44-b97d-c6dc509f510b</Id>
-  <Version>1.0.0.1</Version>
-  <ProviderName>Contoso</ProviderName>
+  <Version>1.0.1.0</Version>
+  <ProviderName>elrond298</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Zotero Citations"/>
   <Description DefaultValue="Insert Zotero citations and build bibliographies in PowerPoint."/>
