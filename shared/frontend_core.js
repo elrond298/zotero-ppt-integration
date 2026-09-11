@@ -6,6 +6,9 @@ const BIBLIOGRAPHY_STYLE_STORAGE_KEY = "zotero-ppt:bibliography-style";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS";
 const ZOTERO_BIBLIOGRAPHY_TAG = "ZOTERO_BIBLIOGRAPHY";
 const BIBLIOGRAPHY_TITLE = "References";
+const BIBLIOGRAPHY_CONTINUATION_TITLE = "References (cont.)";
+const BIBLIOGRAPHY_SPLIT_STORAGE_KEY = "zotero-ppt:split-bibliography";
+const DEFAULT_SPLIT_BIBLIOGRAPHY = true;
 
 const LOG_LEVELS = {
   NONE: 0,
@@ -73,6 +76,11 @@ Office.onReady((info) => {
     if (bibliographyStyleSelect) {
       initializeBibliographyStyleSelect(bibliographyStyleSelect);
       bibliographyStyleSelect.addEventListener("change", handleBibliographyStyleChange);
+    }
+    const splitBibliographyInput = document.getElementById("split-bibliography");
+    if (splitBibliographyInput instanceof HTMLInputElement) {
+      initializeBibliographySplitToggle(splitBibliographyInput);
+      splitBibliographyInput.addEventListener("change", handleBibliographySplitChange);
     }
     output.addEventListener("click", handleRemoveClick);
 
@@ -202,6 +210,21 @@ function initializeBibliographyStyleSelect(selectElement) {
   selectElement.value = hasOption ? initialStyle : DEFAULT_BIBLIOGRAPHY_STYLE;
 }
 
+function initializeBibliographySplitToggle(inputElement) {
+  const savedValue = window.localStorage.getItem(BIBLIOGRAPHY_SPLIT_STORAGE_KEY);
+  inputElement.checked = savedValue === null ? DEFAULT_SPLIT_BIBLIOGRAPHY : savedValue === "true";
+}
+
+function handleBibliographySplitChange(event) {
+  window.localStorage.setItem(BIBLIOGRAPHY_SPLIT_STORAGE_KEY, String(Boolean(event.target.checked)));
+}
+
+function isSplitBibliographyEnabled() {
+  const inputElement = document.getElementById("split-bibliography");
+  if (inputElement instanceof HTMLInputElement) return inputElement.checked;
+  return DEFAULT_SPLIT_BIBLIOGRAPHY;
+}
+
 function handleBibliographyStyleChange(event) {
   const nextStyle = event.target.value || DEFAULT_BIBLIOGRAPHY_STYLE;
   window.localStorage.setItem(BIBLIOGRAPHY_STYLE_STORAGE_KEY, nextStyle);
@@ -297,7 +320,7 @@ async function handleGenerateBibliography() {
       return;
     }
 
-    await writeBibliographySlide(bibliography);
+    await writeBibliographySlide(bibliography, isSplitBibliographyEnabled());
 
     outputElement.textContent = missingKeys.length > 0
       ? `Bibliography generated. Not found in Zotero: ${missingKeys.join(", ")}`
@@ -640,6 +663,19 @@ function parseFormattedBibliography(html) {
     pending += chunk;
   };
 
+  // One line break between entries; the whitespace between block tags must not become a blank line.
+  const appendLineBreak = () => {
+    if (text.length > 0 && !text.endsWith("\n")) append("\n", null);
+  };
+
+  const appendText = (chunk, format) => {
+    const collapsed = chunk.replace(/[ \t\r\n\f\v]+/g, (run) => (run.indexOf("\n") >= 0 ? "\n" : " "));
+    collapsed.split("\n").forEach((piece, index) => {
+      if (index > 0) appendLineBreak();
+      if (piece.length > 0) append(piece, format);
+    });
+  };
+
   const tokens = String(html || "").match(/<[^>]*>|[^<]+/g) || [];
   for (const token of tokens) {
     if (token.charAt(0) === "<") {
@@ -651,7 +687,7 @@ function parseFormattedBibliography(html) {
       if (BIBLIOGRAPHY_LINE_BREAK_TAGS[name]) {
         if (closing || name === "br") {
           flush();
-          if (!text.endsWith("\n")) append("\n", null);
+          appendLineBreak();
         }
         continue;
       }
@@ -683,11 +719,57 @@ function parseFormattedBibliography(html) {
     for (const flag of openFlags) {
       format[flag] = true;
     }
-    append(decodeHtmlEntities(token), openFlags.length > 0 ? format : null);
+    appendText(decodeHtmlEntities(token), openFlags.length > 0 ? format : null);
   }
   flush();
 
-  return trimFormattedText(text, runs);
+  return withBibliographyEntries(trimFormattedText(text, runs));
+}
+
+/* Splits the bibliography into entries (one per line) so it can be spread over several slides.
+   Each entry keeps its own formatting runs, offset from its own start. */
+function splitIntoBibliographyEntries(bibliography) {
+  const text = bibliography.text;
+  const entries = [];
+  let start = 0;
+
+  for (let end = 0; end <= text.length; end++) {
+    if (end < text.length && text.charAt(end) !== "\n") continue;
+    const entryText = text.slice(start, end);
+    if (entryText.length > 0) {
+      const entryRuns = [];
+      for (const run of bibliography.runs) {
+        const runStart = Math.max(run.start, start);
+        const runStop = Math.min(run.start + run.length, end);
+        if (runStop > runStart) {
+          entryRuns.push({ start: runStart - start, length: runStop - runStart, format: run.format });
+        }
+      }
+      entries.push({ text: entryText, runs: entryRuns });
+    }
+    start = end + 1;
+  }
+  return entries;
+}
+
+function withBibliographyEntries(bibliography) {
+  bibliography.entries = splitIntoBibliographyEntries(bibliography);
+  return bibliography;
+}
+
+/* The inverse: one page's worth of entries back into text plus runs. */
+function joinBibliographyEntries(entries) {
+  let text = "";
+  const runs = [];
+  entries.forEach((entry, index) => {
+    if (index > 0) text += "\n";
+    const offset = text.length;
+    text += entry.text;
+    entry.runs.forEach((run) => {
+      runs.push({ start: run.start + offset, length: run.length, format: run.format });
+    });
+  });
+  return { text: text, runs: runs };
 }
 
 /* Drops surrounding whitespace while keeping the run offsets pointing at the same characters. */
@@ -759,14 +841,9 @@ async function addBibliographySlideFromMaster(context, slides) {
   return slides.getItemAt(count.value - 1);
 }
 
-/* An existing References slide is refreshed in place - first the one we tagged, then one whose
-   title already says "References" - so pressing Generate twice never leaves two of them. */
-async function findBibliographySlide(context, slides) {
-  const tagged = slides.items.find((slide) =>
-    slide.tags.items.some((tag) => tag.key === ZOTERO_BIBLIOGRAPHY_TAG),
-  );
-  if (tagged) return tagged;
-
+/* A slide whose title already says "References" is reused, so decks made before the tag existed
+   do not collect a second References slide. The slides we tagged are found by their tag instead. */
+async function findBibliographySlideByTitle(context, slides) {
   // The shape text must be loaded and synced before it can be read below.
   try {
     for (const slide of slides.items) {
@@ -789,7 +866,9 @@ async function findBibliographySlide(context, slides) {
 }
 
 
-async function fillBibliographySlide(context, slide, bibliography) {
+/* Finds (and if asked, creates) the title and content shapes of a slide. The shapes must be
+   loaded and synced before the names can be read. */
+async function findSlideTextShapes(context, slide, createMissing) {
   slide.shapes.load("items/name");
   await context.sync();
 
@@ -806,25 +885,81 @@ async function fillBibliographySlide(context, slide, bibliography) {
   if (!titleShape && slide.shapes.items[0]) titleShape = slide.shapes.items[0];
   if (!contentShape && slide.shapes.items[1]) contentShape = slide.shapes.items[1];
 
-  if (!titleShape) {
-    titleShape = slide.shapes.addTextBox(BIBLIOGRAPHY_TITLE, { left: 50, top: 50, width: 860, height: 100 });
+  if (createMissing && !titleShape) {
+    titleShape = slide.shapes.addTextBox("", { left: 50, top: 50, width: 860, height: 100 });
   }
-  titleShape.textFrame.textRange.text = BIBLIOGRAPHY_TITLE;
-  titleShape.textFrame.textRange.font.size = 44;
-
-  if (!contentShape) {
+  if (createMissing && !contentShape) {
     contentShape = slide.shapes.addTextBox("", { left: 50, top: 150, width: 860, height: 350 });
   }
-  const textRange = contentShape.textFrame.textRange;
-  textRange.text = bibliography.text;
-  textRange.font.size = 14;
-  applyBibliographyFormatting(textRange, bibliography.runs);
-  contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+  return { titleShape: titleShape, contentShape: contentShape };
+}
 
+async function fillBibliographySlide(context, slide, page, title) {
+  const shapes = await findSlideTextShapes(context, slide, true);
+  shapes.titleShape.textFrame.textRange.text = title;
+  shapes.titleShape.textFrame.textRange.font.size = 44;
+
+  const textRange = shapes.contentShape.textFrame.textRange;
+  textRange.text = page.text;
+  textRange.font.size = 14;
+  applyBibliographyFormatting(textRange, page.runs);
+  shapes.contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
   await context.sync();
 }
 
-async function writeBibliographySlide(bibliography) {
+/* Spreads the entries over as many slides as they need. The measurement is PowerPoint's own: with
+   autoSizeShapeToFitText the shape grows to the text, so its height says how much room that text
+   wants. The height the content placeholder starts with is the space one slide offers. */
+async function splitBibliographyIntoPages(context, slide, bibliography, splitAcrossSlides) {
+  const entries = bibliography.entries || [];
+  if (!splitAcrossSlides || entries.length <= 1) {
+    return [joinBibliographyEntries(entries)];
+  }
+
+  const shapes = await findSlideTextShapes(context, slide, true);
+  const contentShape = shapes.contentShape;
+  contentShape.load("height");
+  await context.sync();
+  const budget = contentShape.height;
+  contentShape.textFrame.autoSizeSetting = PowerPoint.ShapeAutoSize.autoSizeShapeToFitText;
+
+  const measure = async (candidate) => {
+    contentShape.textFrame.textRange.text = joinBibliographyEntries(candidate).text;
+    contentShape.load("height");
+    await context.sync();
+    return contentShape.height;
+  };
+
+  const pages = [];
+  let start = 0;
+  while (start < entries.length) {
+    const remaining = entries.slice(start);
+    let fits = 1;
+    if ((await measure(remaining)) <= budget + 1) {
+      fits = remaining.length;
+    } else {
+      let low = 1;
+      let high = remaining.length;
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if ((await measure(remaining.slice(0, middle))) <= budget + 1) {
+          fits = Math.max(fits, middle);
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+    }
+    logInfo("bibliography page holds entries", start, "to", start + fits - 1);
+    pages.push(joinBibliographyEntries(remaining.slice(0, fits)));
+    start += fits;
+  }
+  return pages;
+}
+
+/* Writes the bibliography, spread over as many slides as it needs, into the slides we created for
+   it before (their page number is the tag value). Slides from an earlier, longer run are removed. */
+async function writeBibliographySlide(bibliography, splitAcrossSlides) {
   await PowerPoint.run(async (context) => {
     const slides = context.presentation.slides;
     slides.load("items");
@@ -835,19 +970,49 @@ async function writeBibliographySlide(bibliography) {
     }
     await context.sync();
 
-    const existing = await findBibliographySlide(context, slides);
+    const ours = slides.items
+      .map((slide) => ({ slide: slide, tag: slide.tags.items.find((tag) => tag.key === ZOTERO_BIBLIOGRAPHY_TAG) }))
+      .filter((entry) => entry.tag);
+    const pageSlide = (page) => {
+      const found = ours.find((entry) => entry.tag.value === String(page));
+      return found ? found.slide : null;
+    };
 
-    const target = existing || (await addBibliographySlideFromMaster(context, slides));
-    target.tags.add(ZOTERO_BIBLIOGRAPHY_TAG, "1");
-    await context.sync();
+    const first =
+      pageSlide(1) ||
+      (await findBibliographySlideByTitle(context, slides)) ||
+      (await addBibliographySlideFromMaster(context, slides));
+    const pages = await splitBibliographyIntoPages(context, first, bibliography, splitAcrossSlides);
 
-    const position = slides.items.indexOf(target) + 1;
-    if (position > 0 && position < slides.items.length) {
-      logInfo("moving the bibliography slide to the end", position);
-      target.moveTo(slides.items.length);
-      await context.sync();
+    const targets = [first];
+    for (let page = 2; page <= pages.length; page++) {
+      targets.push(pageSlide(page) || (await addBibliographySlideFromMaster(context, slides)));
     }
 
-    await fillBibliographySlide(context, target, bibliography);
+    for (const entry of ours) {
+      if (!targets.includes(entry.slide)) {
+        logInfo("removing a bibliography slide that is no longer needed");
+        entry.slide.delete();
+      }
+    }
+
+    for (let index = 0; index < targets.length; index++) {
+      targets[index].tags.add(ZOTERO_BIBLIOGRAPHY_TAG, String(index + 1));
+    }
+    await context.sync();
+
+    for (let index = 0; index < targets.length; index++) {
+      const title = index === 0 ? BIBLIOGRAPHY_TITLE : BIBLIOGRAPHY_CONTINUATION_TITLE;
+      await fillBibliographySlide(context, targets[index], pages[index], title);
+    }
+
+    // The bibliography belongs at the end of the deck, first page first.
+    slides.load("items");
+    await context.sync();
+    const firstPosition = slides.items.length - targets.length + 1;
+    for (let index = 0; index < targets.length; index++) {
+      if (firstPosition + index >= 1) targets[index].moveTo(firstPosition + index);
+    }
+    await context.sync();
   });
 }

@@ -72,14 +72,16 @@ for reading the log).
 6. Use the bibliography style selector to choose the output format.
 7. Click `Generate Bibliography`. It refreshes the deck's References slide (or creates one) from all
    stored citation keys, with the formatting the chosen style asks for (italics, bold, sub- and
-   superscript).
+   superscript). Entries that do not fit continue on `References (cont.)` slides while the checkbox
+   under the style selector is ticked (the default); untick it to always use a single slide.
 
 ### Notes
 
 - The add-in reads and writes citation keys from slide metadata, not from slide text alone.
-- The References slide is tagged (`ZOTERO_BIBLIOGRAPHY`), so generating again rewrites that slide
-  instead of adding a second one; a slide whose title already is `References` is reused as well, and the
-  refreshed slide is moved to the end of the deck.
+- The slides we generate are tagged (`ZOTERO_BIBLIOGRAPHY`, with the page number as the value), so
+  generating again rewrites those slides instead of adding more, a slide titled `References` from an
+  older version is adopted, continuation slides that are no longer needed are deleted, and the whole
+  block is kept at the end of the deck.
 - Citation keys that Zotero cannot resolve (renamed or deleted items) are listed in the pane instead of
   being silently dropped from the bibliography.
 - If you remove citation text manually, remove the corresponding stored key from the task pane as well if you do not want it included in the bibliography.
@@ -202,7 +204,8 @@ suffix, suppress author), the HTML-to-formatting-runs parser, and an Office.js u
 when a collection is read before its `load()` was delivered by an awaited `context.sync()` - the bug
 that made Generate Bibliography fail once in PowerPoint. The lint ships with fixtures that must be
 flagged (they are part of the test), and reintroducing the load/sync bug in the frontend makes it fail
-on the real file (27 checks). Then restart PowerPoint and open the pane to check the add-in itself.
+on the real file; the bibliography entry splitter is covered too (34 checks). Then restart PowerPoint
+and open the pane to check the add-in itself.
 
 ### Implementation notes
 

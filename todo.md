@@ -16,6 +16,8 @@
     - [x] refresh the References slide in place instead of adding one per click
     - [x] feed the Zotero picker's prefix/locator/suffix/suppress-author fields into the citation text
     - [x] report citation keys Zotero cannot resolve (renamed or deleted items)
+    - [x] one line per entry (the whitespace between BBT's block tags no longer becomes a blank line)
+    - [x] spread a long bibliography over `References (cont.)` slides, measured with PowerPoint's own autosize,
     - [ ] offer "follow Zotero's quick-copy style" plus a free-text CSL style id
     - [ ] copy BibTeX / CSL-JSON / notes of the cited items (BBT item.export, item.notes)
     - [ ] show author-year next to each citekey in the pane and click through to the citing slides

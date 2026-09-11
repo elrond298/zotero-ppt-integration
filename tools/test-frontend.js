@@ -119,6 +119,49 @@ check(
     sandbox.parseFormattedBibliography("<i>Half a title").text === "Half a title",
 );
 
+console.log("bibliography entries");
+const twoEntries = sandbox.parseFormattedBibliography(
+    '<div class="csl-entry">Smith, J. (2020). <i>Title one</i>.</div>\n  <div class="csl-entry">Doe, A. (2019). Title two.</div>',
+);
+check(
+    "whitespace between entries does not become an empty line",
+    twoEntries.text === "Smith, J. (2020). Title one.\nDoe, A. (2019). Title two.",
+    JSON.stringify(twoEntries.text),
+);
+check("two entries", twoEntries.entries.length === 2, JSON.stringify(twoEntries.entries.map((entry) => entry.text)));
+check(
+    "an entry keeps its own formatting",
+    twoEntries.entries[0].runs.length === 1 &&
+        twoEntries.entries[0].text.slice(
+            twoEntries.entries[0].runs[0].start,
+            twoEntries.entries[0].runs[0].start + twoEntries.entries[0].runs[0].length,
+        ) === "Title one",
+    JSON.stringify(twoEntries.entries[0]),
+);
+check("the unformatted entry has no runs", twoEntries.entries[1].runs.length === 0);
+check(
+    "a page keeps the formatting of its entries",
+    twoEntries.entries.every((entry) => {
+        const page = sandbox.joinBibliographyEntries([entry]);
+        return (
+            page.text === entry.text &&
+            page.runs.every((run) => page.text.slice(run.start, run.start + run.length) === entry.text.slice(run.start, run.start + run.length))
+        );
+    }),
+);
+check(
+    "joining entries rebases the run offsets",
+    (() => {
+        const page = sandbox.joinBibliographyEntries(twoEntries.entries);
+        const run = page.runs[0];
+        return run.start > 0 && page.text.slice(run.start, run.start + run.length) === "Title one";
+    })(),
+);
+check(
+    "pretty printed entries still give one line each",
+    sandbox.parseFormattedBibliography('<div class="csl-entry">\n  First.\n</div>\n<div class="csl-entry">\n  Second.\n</div>').text === "First.\nSecond.",
+);
+
 /* --- Office.js usage lint ----------------------------------------------------------------
  * Office.js proxies expose nothing until a property has been queued with load() and delivered by
  * an awaited context.sync(). Reading too early throws "The property 'x' is not available" at run

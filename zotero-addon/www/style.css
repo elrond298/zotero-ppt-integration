@@ -366,6 +366,27 @@ h1,
     box-shadow: var(--shadow-focus);
 }
 
+/* Checkbox row: the box sits on the label's line instead of its own. */
+.control-check {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.control-check input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    flex: none;
+    accent-color: var(--c-accent);
+    cursor: pointer;
+}
+
+.control-check .control-label {
+    cursor: pointer;
+}
+
 .button-group .ms-Button {
     width: 100%;
     margin-bottom: 0;
