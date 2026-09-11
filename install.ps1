@@ -268,7 +268,7 @@ try {
 }
 
 Write-Host ""
-Write-Host "Done. Restart PowerPoint, then open Home > Zotero Tools > Open Zotero Pane."
-Write-Host "Start it from Home > Add-ins > Zotero Citations; Office shows sideloaded add-ins there instead of pinning them to the Home tab."
+Write-Host "Done. Restart PowerPoint, then start the add-in from Home > Add-ins > Zotero Citations."
+Write-Host "Office keeps sideloaded add-ins in the Add-ins tab; the Zotero Tools group appears on the Home tab while it is running."
 Write-Host "Zotero must be running with the Better BibTeX plugin for citing and bibliographies."
 Write-Host "Uninstall with: powershell -ExecutionPolicy Bypass -File `"$Source\uninstall.ps1`""
