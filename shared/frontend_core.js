@@ -442,7 +442,9 @@ function findCitationSpan(text, label) {
     // little else - "(see Smith, 2020)" is still the citation, "(Smith, 2020; Doe, 2019)" is not.
     const open = haystack.lastIndexOf("(", exact);
     const close = haystack.indexOf(")", exact + wanted.length);
-    if (open >= 0 && close >= 0 && close - open <= wanted.length + 12 && haystack.slice(open + 1, exact).trim().length <= 6) {
+    const group = open >= 0 && close >= 0 ? haystack.slice(open, close + 1) : "";
+    const years = group.match(/\b(1[5-9]\d{2}|20\d{2})\b/g) || [];
+    if (group !== "" && years.length <= 1 && close - open <= wanted.length + 12 && haystack.slice(open + 1, exact).trim().length <= 6) {
       return { start: open, end: close + 1 };
     }
     return { start: exact, end: exact + wanted.length };
@@ -486,7 +488,7 @@ function tidyCitationText(text) {
     .replace(/\(\s*[;,]\s*/g, "(")
     .replace(/\s*[;,]\s*\)/g, ")")
     .replace(/\(\s*\)/g, "")
-  return cleaned.trim() === "" ? "" : cleaned;
+  return cleaned.trim() === "" ? "" : cleaned.trim();
 }
 
 /* One entry per cited item, with the slides that cite it, for the pane's list. */
@@ -1008,13 +1010,6 @@ async function removeCitation(keyToRemove) {
         // bibliography no longer lists - and if the text cannot be found, the key stays as well.
         if (removedEntry) {
           textRemoved = await removeCitationTextFromSlide(context, slide, removedEntry);
-          if (!textRemoved) {
-            slide.tags.add(
-              ZOTERO_TAG_KEY,
-              JSON.stringify(citations.map((entry) => ({ k: entry.key, l: entry.label, r: entry.recorded ? 1 : 0 }))),
-            );
-            await context.sync();
-          }
         }
       }
     });
@@ -1024,7 +1019,8 @@ async function removeCitation(keyToRemove) {
     if (!textRemoved) {
       const note = document.createElement("p");
       note.className = "note";
-      note.textContent = "Could not find this citation's text on the slide, so nothing was removed - delete the text in the slide and press x again.";
+      note.textContent =
+        "Its citation text was not found on the slide (deleted or rewritten), so only the key was removed.";
       document.getElementById("output").appendChild(note);
     }
   } catch (error) {

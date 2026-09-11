@@ -219,6 +219,7 @@ Afterwards re-run `install.ps1` so PowerPoint gets the new files.
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\test-helper.ps1
 node tools/test-frontend.js
+node tools/test-behaviour.js
 ```
 
 The first compiles the helper, starts it against a stub Better BibTeX and checks the API, the CORS
