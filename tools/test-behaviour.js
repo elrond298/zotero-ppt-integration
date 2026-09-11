@@ -261,6 +261,15 @@ async function main() {
     await pane.displayCitationsFromSlide();
     check("a deleted text box drops the citation it held", world.slideTag().length === 0, JSON.stringify(world.slideTag()));
 
+    /* 8b. a citation with something added by hand goes as a whole */
+    console.log("a citation with a note added by hand");
+    world = deck();
+    pane = loadPane(world);
+    await pane.insertCitationsIntoPowerPoint([citation("zipori2015", ["Zipori"], "2015")]);
+    world.setText(" (Zipori et al., 2015, see page 2)");
+    await pane.removeCitation("zipori2015");
+    check("the whole citation, note included, is removed", world.text() === "", JSON.stringify(world.text()));
+
     /* 9. a citation rewritten beyond recognition: the key goes, the text stays, the pane says so */
     console.log("a citation rewritten beyond recognition");
     world = deck();

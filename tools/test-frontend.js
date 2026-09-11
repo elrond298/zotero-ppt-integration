@@ -438,6 +438,16 @@ check("the exact text is found, parentheses included", spanText("Text (Smith, 20
 check("an edited author is still found", spanText("Text (Smyth et al., 2020) more", smithLabel) === "(Smyth et al., 2020)", JSON.stringify(spanText("Text (Smyth et al., 2020) more", smithLabel)));
 check("an edited year keeps the citation findable by its words", spanText("Text (Smith, 1999) more", smithLabel) === "(Smith, 1999)");
 check("an added page number is tolerated", spanText("(Smith, 2020, p. 42)", smithLabel) === "(Smith, 2020, p. 42)");
+check(
+    "a note added by hand is taken with the citation",
+    spanText("(Smith, 2020, see page 2)", smithLabel) === "(Smith, 2020, see page 2)",
+    JSON.stringify(spanText("(Smith, 2020, see page 2)", smithLabel)),
+);
+check(
+    "a second citation in the same parentheses is not taken",
+    spanText("(Smith, 2020; Doe, 2019)", smithLabel) === "Smith, 2020",
+    JSON.stringify(spanText("(Smith, 2020; Doe, 2019)", smithLabel)),
+);
 check("a different citation is not claimed", spanText("(Doe, 2019)", smithLabel) === null);
 check("a deleted citation is not found", spanText("Nothing here at all", smithLabel) === null);
 check("a citation without a label is not found", spanText("(Smith, 2020)", "") === null);

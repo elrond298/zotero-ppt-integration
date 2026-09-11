@@ -444,7 +444,9 @@ function findCitationSpan(text, label) {
     const close = haystack.indexOf(")", exact + wanted.length);
     const group = open >= 0 && close >= 0 ? haystack.slice(open, close + 1) : "";
     const years = group.match(/\b(1[5-9]\d{2}|20\d{2})\b/g) || [];
-    if (group !== "" && years.length <= 1 && close - open <= wanted.length + 12 && haystack.slice(open + 1, exact).trim().length <= 6) {
+    // The group may carry a little more than the label ("..., see page 2"), but not another
+    // citation: those bring their own year and are left for their own removal.
+    if (group !== "" && years.length <= 1 && close - open <= wanted.length + 40 && haystack.slice(open + 1, exact).trim().length <= 6) {
       return { start: open, end: close + 1 };
     }
     return { start: exact, end: exact + wanted.length };
