@@ -1,256 +1,230 @@
 # PowerPoint Zotero Integration
 
-This project connects Microsoft PowerPoint to Zotero through Better BibTeX. It supports two usage modes:
+Cite Zotero items in PowerPoint: pick a reference from Zotero, drop it on a slide, and build the
+bibliography at the end. Everything runs on your own machine — Zotero, a small local helper, and a
+PowerPoint task pane. Nothing is uploaded anywhere.
 
-- A sideloaded Office add-in in `zotero-addon/` (installs without Node.js, npm or Python)
-- A Script Lab snippet using the root `index.html`, `style.css`, and `script.js`
+## What you get
 
-Core features:
+- **Insert citations from Zotero.** A task pane in PowerPoint with two buttons: open Zotero's picker,
+  or cite whatever is selected in Zotero right now.
+- **In-text citations written as plain text.** `(Zuberi et al., 2001)`, exactly as you would type it,
+  so it looks like your own writing and survives copy-paste.
+- **The citation keys travel with the slide.** Each slide remembers which items it cites, in slide
+  metadata. Edit the citation's wording, move text around, reformat — the reference is not lost.
+- **Removing a citation removes both halves.** The `x` button in the pane deletes the citation's text
+  from the slide *and* its entry; deleting the citation's text yourself drops the entry as well.
+- **A bibliography slide, generated and refreshed.** Pick one of five styles (JGR: Atmospheres, APA,
+  Chicago Author-Date, IEEE, MLA), a text size, and generate. Real italics, bold, sub- and superscript
+  come from Zotero's HTML output. Pressing it again refreshes the same slide instead of adding another.
+- **Long bibliographies spread over slides.** Entries that do not fit continue on `References (cont.)`
+  slides, and you can turn that off with one checkbox.
+- **A list of everything cited.** `All citations` shows each item with the slides that cite it; click a
+  row to jump to that slide.
+- **Warning for dead keys.** If a citekey no longer exists in Zotero (renamed or deleted item), the pane
+  says so instead of quietly leaving it out of the bibliography.
 
-- Insert in-text citations into slides
-- Track citation keys in slide metadata
-- View and remove stored citation keys per slide
-- Generate a bibliography slide from all cited items in the presentation
+## Requirements
 
-## 1. Install the add-in
+| | |
+|---|---|
+| Zotero | with the **Better BibTeX** plugin (this is what exposes the picker and the bibliography) |
+| PowerPoint | desktop, Windows. Built and tested on Office 16.0.17932 |
+| Nothing else | no Node.js, no npm, no Python — see *Install* |
 
-### Prerequisites
+Better BibTeX, if you do not have it yet: download the `.xpi` from its release page, then in Zotero use
+`Tools > Add-ons > ⚙ > Install Add-on From File…` and restart Zotero.
 
-1. Install Zotero and keep it running.
-2. Install Better BibTeX for Zotero.
-3. Have PowerPoint installed on Windows.
+## Install
 
-Nothing else: the local helper is a small C# program that `install.ps1` compiles with the C# compiler
-that ships with Windows (`csc.exe`), and it uses only the .NET Framework. No Node.js, no npm, no
-Python, no `pip`, no downloads.
-
-Better BibTeX installation:
-
-1. Download the latest `.xpi` from the Better BibTeX release page.
-2. In Zotero, open `Tools > Add-ons`.
-3. Use the gear menu and choose `Install Add-on From File...`.
-4. Restart Zotero.
-
-### Install
-
-From the repository root, in Windows PowerShell:
+Keep Zotero running, open Windows PowerShell in this repository and run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-The same command works from WSL, because Windows PowerShell can read the repository over the
-`\\wsl.localhost` path:
+From WSL the same command works (Windows PowerShell can read the repository over `\\wsl.localhost`):
 
 ```bash
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File '\\wsl.localhost\<distro>\<path-to-repo>\install.ps1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File '\\wsl.localhost\<distro>\<path>\install.ps1'
 ```
 
-`install.ps1` does all of this, and can be re-run at any time to update the installed copy:
+The installer:
 
-- compiles `zotero-addon/helper/ZoteroHelper.cs` and installs it with the web files and the manifest
-  in `%LOCALAPPDATA%\ZoteroCitations`
-- creates a trusted localhost certificate for `https://localhost:23000` (reused while it is valid)
-- registers the add-in with PowerPoint (`HKCU:\Software\Microsoft\Office\16.0\Wef\Developer`)
-- adds a Start-up shortcut (a hidden VBScript launcher) so the helper runs at every logon, and starts it now
-- checks that `https://localhost:23000/taskpane.html` answers, so failures are visible immediately
+1. compiles the helper (`zotero-addon/helper/ZoteroHelper.cs`) using the C# compiler that ships with
+   Windows, and copies it with the web files and the manifest into `%LOCALAPPDATA%\ZoteroCitations`;
+2. creates a trusted certificate for `https://localhost:23000` (re-used while it is valid — PowerPoint
+   task panes must be served over HTTPS);
+3. registers the add-in with PowerPoint
+   (`HKCU:\Software\Microsoft\Office\16.0\Wef\Developer`);
+4. starts the helper now, and again at every logon through a hidden launcher;
+5. checks that the pane answers, so a broken install is visible immediately.
 
-Use `-NoAutostart` if you prefer to start the helper by hand with
-`%LOCALAPPDATA%\ZoteroCitations\run-server.cmd` (that one keeps a console window open, which is handy
-for reading the log).
+Re-run it any time to update the installed copy. Add `-NoAutostart` if you prefer to start the helper
+yourself: `%LOCALAPPDATA%\ZoteroCitations\run-server.cmd` (keeps a console open, handy for reading the
+log).
 
-### How to use the add-in
-
-1. Restart PowerPoint after installing (Office reads the add-in registration at start-up).
-2. Start it from the Add-ins tab: `Home > Add-ins (加载项) > Zotero Citations`. The `Zotero Tools`
-   group (with `Open Zotero Pane`) appears on the Home tab while the add-in is loaded, but Office does
-   not pin sideloaded add-ins there permanently (see Troubleshooting).
-3. Select a slide.
-4. Click `Add Citation (Pop up)` to open the Zotero picker. Anything you fill in there (`see `, `p. 42`,
-   suppress author) is written into the citation text.
-5. Click `Add Citation (Selected)` to cite the currently selected Zotero item(s) directly.
-6. Choose the bibliography style and the text size (10-20 pt; the page split uses the same size).
-7. Click `Generate Bibliography`. It refreshes the deck's References slide (or creates one) from all
-   stored citation keys, with the formatting the chosen style asks for (italics, bold, sub- and
-   superscript). Entries that do not fit continue on `References (cont.)` slides while the checkbox
-   under the style selector is ticked (the default); untick it to always use a single slide.
-8. The `All citations` list below shows every cited item with the slides that cite it; click a row to
-   jump to that slide. Rows show the short label (`Smith, 2020`) for citations added with this version
-   and fall back to the citekey for older ones.
-
-### Notes
-
-- The add-in reads and writes citation keys from slide metadata, not from slide text alone.
-- Removing a citation's text (`x`) survives editing: the add-in looks for the text it wrote (inside the
-  parentheses) and, when that exact text is gone, for the parenthesised group that still looks like the
-  citation - same year, shared words, similar length. If nothing matches, nothing is removed and the
-  pane says so, rather than dropping the key while the citation stays in the slide.
-- Citations are written as plain text (`(Zuberi et al., 2001)`), and each one is recorded on the text
-  box it was written into (`Shape.tags`, PowerPointApi 1.3) as well as on the slide. Whether a citation
-  is still there is decided from that record, not from its wording: editing the author, the year or the
-  rest of the text never drops the key, while a text box that is deleted or emptied drops the citations
-  it held. Citations from older decks have no record and are left alone - remove those with `x`.
-- Text and key are kept in step: deleting a citation's text from a slide drops its key (and the
-  pane says which keys it dropped) the next time that slide is shown, while removing a key with the
-  `x` button also deletes the citation's text - and tells you if the text was not found. A citation
-  counts as present while its author and year are still somewhere on the slide, so editing the text
-  (adding `see`, `et al.`, a page number) never drops the reference.
-- Slide reordering uses `Slide.moveTo`, which some PowerPoint builds (16.0.17932 on Windows, for one)
-  reject with a GeneralException; when that happens the reordering is skipped and the bibliography
-  slides stay where they are, with a note in `server.log`.
-- The slides we generate are tagged (`ZOTERO_BIBLIOGRAPHY`, with the page number as the value), so
-  generating again rewrites those slides instead of adding more, a slide titled `References` from an
-  older version is adopted, continuation slides that are no longer needed are deleted, and the whole
-  block is kept at the end of the deck.
-- Citation keys that Zotero cannot resolve (renamed or deleted items) are listed in the pane instead of
-  being silently dropped from the bibliography.
-- If you remove citation text manually, remove the corresponding stored key from the task pane as well if you do not want it included in the bibliography.
-- The task pane status indicator reflects whether the local helper is reachable.
-- The helper is two listeners in one process: the JSON API on `http://localhost:8000` and the pane
-  itself on `https://localhost:23000`. Office requires HTTPS for task panes, and Office's webview
-  cannot reach Better BibTeX directly.
-
-### Troubleshooting
-
-- A pane that loaded while the helper was restarting reloads itself once to get its stylesheet back.
-- Every generated References page is saved as a PNG in `%LOCALAPPDATA%\ZoteroCitations\snapshots` (and the
-  current slide is saved when a generation fails), so a result can be looked at afterwards. This needs
-  PowerPointApi 1.8; on builds without it the pane just skips the images.
-- **The pane stays blank or looks unstyled.** Read `%LOCALAPPDATA%\ZoteroCitations\server.log`, and open
-  `https://localhost:23000/taskpane.html` in a browser to see what the add-in receives.
-- **"Proxy not running" in the pane.** The helper is not running: start
-  `%LOCALAPPDATA%\ZoteroCitations\run-server.cmd` (visible console with the same log) or re-run `install.ps1`.
-- **`FATAL: could not bind to port ...`** means another copy of the helper is already running.
-- **The pane stops loading after about a year.** The localhost certificate expired: re-run `install.ps1` to renew it.
-- **The add-in is not pinned to the Home tab.** Office keeps sideloaded (developer) add-ins in
-  `Home > Add-ins` (加载项); starting it there opens the pane and adds the `Zotero Tools` group for that
-  session. A permanently pinned button needs Microsoft's deployment path (AppSource or the Microsoft 365
-  admin center), which requires the add-in files to be hosted on a public HTTPS URL - and a publicly
-  hosted pane could not reach this local helper anyway (WebView2 blocks public pages from calling
-  localhost). The deployment options were checked in detail: this Office is a volume licence without a
-  Microsoft 365 sign-in, and the Trust Center dialog only accepts HTTPS catalog URLs, so no local
-  deployment route exists.
-- **The pane cannot reach anything at all** on some Office builds, and the loopback exemption is missing.
-  That exemption was only needed for the old dev-server setup; if you hit it, enable loopback for the
-  Office webview once in an **elevated** PowerShell and restart PowerPoint:
-
-  ```powershell
-  npx office-addin-dev-settings appcontainer EdgeWebView --loopback
-  ```
-
-- **Uninstall:**
-
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
-  ```
-
-## 2. Usage with ScriptLab
-
-Use this mode if you want to run the integration as a Script Lab snippet instead of the add-in.
-
-### Prerequisites
-
-1. Install Zotero and Better BibTeX.
-2. Install Script Lab inside PowerPoint (`Insert > Get Add-ins`, search for `Script Lab`).
-
-### Start the local helper
-
-The helper installed in step 1 already listens on `http://localhost:8000`, so there is nothing to start
-while the add-in is installed. (Without the add-in, run `install.ps1 -NoAutostart`, or start the helper
-in a console with `run-server.cmd`: `ZoteroHelper.exe --no-static` serves only the JSON API.)
-
-### Load the Script Lab snippet
-
-1. Open Script Lab in PowerPoint.
-2. Create a new snippet.
-3. Copy these files into the matching tabs:
-
-- `index.html` -> HTML
-- `style.css` -> CSS
-- `script.js` -> Script
-
-No extra libraries are required.
-
-### How to use the snippet
-
-1. Run the snippet.
-2. Select a slide.
-3. Use `Add Citation (Pop up)` or `Add Citation (Selected)`.
-4. Choose a bibliography style from the selector.
-5. Click `Generate Bibliography` when you are ready to build the references slide.
-
-### Notes
-
-- Script Lab uses the same frontend logic as the standalone add-in.
-
-## 3. Development notes
-
-### Repository structure
-
-- Root files `index.html`, `style.css`, and `script.js` are for Script Lab usage.
-- `zotero-addon/www/` is the add-in web root: `taskpane.html`, `commands.html`, `style.css`, `frontend_core.js`.
-- `zotero-addon/helper/ZoteroHelper.cs` is the whole helper (API proxy + HTTPS file server), compiled by `install.ps1`.
-- `zotero-addon/manifest.xml` is the add-in manifest; `install.ps1` copies it to `%LOCALAPPDATA%\ZoteroCitations`.
-- `shared/frontend_core.js` is the single source of truth for frontend behavior.
-- `install.ps1` / `uninstall.ps1` install and remove the add-in on Windows.
-
-### Generated and wrapped files
-
-These files should not be treated as primary edit targets:
-
-- `script.js`
-- `zotero-addon/www/frontend_core.js`
-- `zotero-addon/www/style.css`
-
-For frontend behavior changes, edit `shared/frontend_core.js`; for styling, edit `style.css`; then
-regenerate the outputs.
-
-### Regenerating shared frontend files
+**Uninstall** (removes the add-in, the certificate registration, the helper and the shortcuts):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\sync_shared.ps1
+powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
 ```
 
-This updates `script.js`, `zotero-addon/www/frontend_core.js`, and `zotero-addon/www/style.css`.
-Afterwards re-run `install.ps1` so PowerPoint gets the new files.
+## Using it
 
-### Validation
+1. **Restart PowerPoint** once after installing — Office reads add-in registrations at start-up.
+2. Open it from `Home > Add-ins (加载项) > Zotero Citations`. The `Zotero Tools` group appears on the
+   Home tab while the add-in is loaded. (Office does not pin sideloaded add-ins permanently — that is
+   an Office limitation, not a setting you are missing; see *Technical details*.)
+3. Select a slide and add citations:
+   - `Add Citation (Pop up)` — opens Zotero's picker. Anything you fill in there (`see `, `p. 42`,
+     suppress author) is written into the citation text.
+   - `Add Citation (Selected)` — cites the item(s) currently selected in Zotero.
+4. Choose the bibliography **style** and **text size**. Entries are laid out with that size, so a larger
+   font simply means fewer entries per page.
+5. `Generate Bibliography` builds or refreshes the `References` slide(s). The checkbox
+   *Continue on more slides when it does not fit* (on by default) decides whether long lists spread
+   over `References (cont.)` slides.
+6. The lists below the buttons show the **current slide's** citations (with `x` to remove one) and
+   **all citations** in the deck; click a row there to jump to that slide.
+
+## How citations behave
+
+This is the part worth knowing, because it explains what the pane will and will not do:
+
+- **Editing a citation never loses the reference.** The add-in remembers which text box received the
+  citation, so you can rewrite `(AAA et al., 2022)` as you like — fix the author, the year, add
+  `see this`, move it into a group — and the entry stays.
+- **A citation is gone when its text box is gone or emptied.** That is what a deletion looks like. The
+  pane then reports the keys it dropped, and the bibliography follows.
+- **`x` removes the citation's text too.** It finds the text it wrote, and if that exact text was
+  edited, the piece of the citation group that still matches (same year, shared words). In a group like
+  `(AAA et al., 2022, see this; BBBB et al., 2000)`, removing AAA leaves `(BBBB et al., 2000)`.
+- **If the text cannot be found at all** (you rewrote the citation beyond recognition), the pane says
+  so and only removes the entry — check the slide afterwards.
+- **Citations from an older version of this add-in** have no remembered text box. They are never
+  dropped automatically; remove them with `x`.
+
+## Troubleshooting
+
+Log file: `%LOCALAPPDATA%\ZoteroCitations\server.log` — it records the helper's work *and* the pane's
+own failures, so it is the first thing to read.
+
+| Symptom | What to do |
+|---|---|
+| Pane is blank, or shows no styling | Reopen the pane (it reloads itself once for a missed stylesheet). Still blank: open `https://localhost:23000/taskpane.html` in a browser and read the log |
+| `Proxy not running` / status dot red | The helper is not running: run `%LOCALAPPDATA%\ZoteroCitations\run-server.cmd`, or re-run `install.ps1` |
+| `FATAL: could not bind to port …` | Another copy of the helper is already running |
+| Pane stops loading after about a year | The localhost certificate expired — re-run `install.ps1` |
+| Add-in is not on the Home tab | Office keeps sideloaded add-ins under `Home > Add-ins`; starting it there loads the pane and its ribbon group for that session |
+| Bibliography is a single giant text box | The page split fell back to a character budget — check the log for `bibliography text height`, and tell me the numbers |
+| Anything unexpected | The pane posts its errors to the log; `citation scan: …`, `citation shape check failed`, `shape …` lines say what it saw |
+
+## Alternative: Script Lab
+
+You can run the same logic as a Script Lab snippet instead of installing the add-in. It needs the
+helper, so run `install.ps1 -NoAutostart` first (or start `ZoteroHelper.exe --no-static` yourself), then
+in Script Lab create a snippet and copy `index.html`, `style.css` and `script.js` into its HTML, CSS and
+Script tabs. Behaviour is identical — the snippet and the add-in share the same frontend code.
+
+---
+
+Everything below is for people working on this repository.
+
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `shared/frontend_core.js` | **The source of truth for the pane's behaviour** — edited by hand |
+| `style.css`, `index.html` | The pane's markup and styling (used by the add-in and by Script Lab) |
+| `zotero-addon/helper/ZoteroHelper.cs` | The whole helper: JSON API + HTTPS file server, compiled by `install.ps1` |
+| `zotero-addon/manifest.xml` | The add-in manifest (task pane + ribbon command) |
+| `zotero-addon/www/` | The deployed web root — **generated**, do not edit |
+| `script.js` | Generated copy of `shared/frontend_core.js` for Script Lab — do not edit |
+| `install.ps1`, `uninstall.ps1` | Install / remove the add-in on Windows |
+| `tools/sync_shared.ps1` | Regenerates the copies above from `shared/frontend_core.js` |
+| `tools/test-helper.ps1`, `tools/test-frontend.js`, `tools/test-behaviour.js` | The test suites |
+
+## Working on it
+
+After changing `shared/frontend_core.js` or `style.css`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\test-helper.ps1
-node tools/test-frontend.js
-node tools/test-behaviour.js
+powershell -ExecutionPolicy Bypass -File .\tools\sync_shared.ps1   # regenerate the copies
+powershell -ExecutionPolicy Bypass -File .\install.ps1             # deploy to PowerPoint
 ```
 
-The first compiles the helper, starts it against a stub Better BibTeX and checks the API, the CORS
-preflight, the HTTPS file server, the no-cache headers and path traversal handling, the log endpoint and the snapshot endpoint (34 checks). The
-second runs the pane's code without a browser: the citation text builder (picker locator, prefix,
-suffix, suppress author), the HTML-to-formatting-runs parser, and an Office.js usage lint that fails
-when a collection is read before its `load()` was delivered by an awaited `context.sync()` - the bug
-that made Generate Bibliography fail once in PowerPoint. The lint ships with fixtures that must be
-flagged (they are part of the test), and reintroducing the load/sync bug in the frontend makes it fail
-on the real file; the bibliography entry splitter, the character-budget fallback and the citation tag formats are covered too (44 checks). Then restart PowerPoint
-and open the pane to check the add-in itself.
+### Tests
 
-### Implementation notes
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\test-helper.ps1   # 34 checks
+node tools/test-frontend.js                                        # 60 checks
+node tools/test-behaviour.js                                       # 22 checks
+```
 
-- `ZoteroHelper.exe` serves the JSON API on `http://localhost:8000` and the pane on `https://localhost:23000`.
-- `/zotero` proxies Better BibTeX CAYW calls (the Zotero picker can stay open for minutes, so the
-  upstream call has a 10 minute ceiling).
-- `/bibliography` proxies Better BibTeX JSON-RPC bibliography generation; `format: "html"` in the
-  request becomes `contentType: html` upstream, which is what makes real italics/bold/sub/superscript
-  possible in the References slide.
-- `/health` is used by the UI status indicator; `POST /log` lets the pane write its own errors into
-  `server.log`, and `POST /snapshot` stores a slide image the pane rendered with `Slide.getImageAsBase64()`.
-- Feature detection uses `Office.context.requirements.isSetSupported("PowerPointApi", ...)`: `Slide.moveTo`
-  and `Slide.getImageAsBase64` (1.8) are skipped on hosts without them, and the pane reports the
-  supported sets to `server.log`.
-- Written in C# 5 on purpose: the compiler that ships with Windows is not a Roslyn compiler.
-- Bibliography output is based on citation keys stored in slide metadata.
+- **`test-helper.ps1`** compiles the helper, runs it against a stub Better BibTeX and checks the API,
+  the CORS preflight, the HTTPS file server, no-cache headers, path traversal, the log endpoint and the
+  snapshot endpoint.
+- **`test-frontend.js`** runs the pane's code without a browser: the citation text builder, the
+  HTML-to-formatting parser, the bibliography entry splitter, the citation tag formats, the span finder,
+  and an **Office.js usage lint** that fails when a collection is read before its `load()` was delivered
+  by an awaited `context.sync()` — a mistake that cost a debugging session once. The lint has fixtures
+  that must be flagged, so a broken lint fails the suite.
+- **`test-behaviour.js`** runs the pane's real functions against a small in-memory PowerPoint (slides,
+  shapes, text, tags) and checks the end result of the flows that matter: insert, edit, delete, remove —
+  including the two-citations-in-one-text-box cases.
 
-### Useful links
+Nothing in the suites touches PowerPoint itself. After a change that does, restart PowerPoint and open
+the pane.
 
-- https://retorque.re/zotero-better-bibtex/citing/cayw
-- https://retorque.re/zotero-better-bibtex/exporting/json-rpc/index.html
-- https://www.zotero.org/support/dev/web_api/v3/basics
-- https://learn.microsoft.com/en-us/javascript/api/powerpoint
+## Technical details
+
+**Two listeners in one process.** `ZoteroHelper.exe` serves the JSON API on
+`http://localhost:8000` and the pane itself on `https://localhost:23000`. Both are needed: PowerPoint
+requires HTTPS for task panes, and the pane's webview cannot call Better BibTeX on
+`127.0.0.1:23119` directly (cross-origin, and WebView2 blocks a public page from reaching localhost —
+which is also why this cannot be hosted on a web server).
+
+**No runtimes by design.** The helper is C# 5 compiled with the `csc.exe` that ships with Windows,
+because that is the only compiler guaranteed to exist on a target machine. C# 5 means no string
+interpolation, no `?.`, no `nameof`. `.NET Framework` also cannot read PEM private keys, hence the
+unencrypted `localhost.pfx` used for the certificate.
+
+**API endpoints.** `/zotero` proxies Better BibTeX's CAYW calls (10-minute ceiling, because the picker
+can stay open); `/bibliography` proxies its JSON-RPC bibliography generation — `format: "html"` becomes
+`contentType: html`, which is what makes real italics and sub/superscript possible; `/health` drives the
+status dot; `POST /log` lets the pane write its errors into `server.log`; `POST /snapshot` stores a PNG
+of a generated References slide (newest 20, in `%LOCALAPPDATA%\ZoteroCitations\snapshots`) for looking at
+results afterwards.
+
+**How a citation is identified.** Slide metadata holds, per slide, a JSON list of
+`{k: citekey, l: display text, s: shape id}` in a tag named `ZOTERO_CITATION_KEYS`; the shape's `id`
+points at the text box that received the text. Presence is decided from that id — the text box exists and
+holds text, or it does not — so no guessing from the citation's wording is needed. Finding the *span* to
+delete inside a text box still needs the text, because PowerPoint offers no way to address a range of
+text: the add-in looks for the label it wrote, then for the piece of a citation group that still matches.
+Two earlier attempts at a hidden marker inside the text failed on this host: PowerPoint either dropped
+the marker characters or displayed the citation key.
+
+**Feature detection.** `Office.context.requirements.isSetSupported("PowerPointApi", …)` guards the
+optional calls: `Slide.moveTo` and `Slide.getImageAsBase64` need 1.8 and are skipped without them
+(16.0.17932 rejects `moveTo` with a `GeneralException`), shape ids need 1.3, jumping to a slide needs
+1.5. The pane reports the supported sets and the host version to the log.
+
+**Bibliography slides.** Generated slides are tagged `ZOTERO_BIBLIOGRAPHY` with their page number, so
+generating again rewrites them instead of adding more; a slide already titled `References` is adopted;
+surplus continuation slides are deleted. The layout comes from a blank slide's layout, and the split
+uses PowerPoint's own measurement with a character-budget fallback when the host does not report usable
+heights.
+
+**Why it is not in the Office Store.** A published add-in must be served from a public HTTPS URL, and
+that page cannot reach a local helper (WebView2's local-network restrictions). Certification would also
+fail, since a reviewer has no local Zotero. The Microsoft 365 admin-centre route needs a Microsoft 365
+Business/Enterprise licence with an organisational sign-in, which this machine does not have. So the
+add-in stays sideloaded, and its ribbon group is loaded from `Home > Add-ins`.
+
+## Links
+
+- Better BibTeX CAYW (the picker): https://retorque.re/zotero-better-bibtex/citing/cayw
+- Better BibTeX JSON-RPC: https://retorque.re/zotero-better-bibtex/exporting/json-rpc/index.html
+- PowerPoint JavaScript API: https://learn.microsoft.com/en-us/javascript/api/powerpoint
