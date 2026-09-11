@@ -253,37 +253,19 @@ check("edited whitespace still matches", sandbox.removeCitationText("(Smith,   2
 check("a citation that is not there changes nothing", sandbox.removeCitationText("Doe, 2019", smithLabel).removed === false);
 check("an empty label removes nothing", sandbox.removeCitationText("(Smith, 2020)", "").removed === false);
 
-console.log("citation markers");
-const marked = sandbox.markCitationText("Smith, 2020");
-check("a written citation keeps its visible text", marked.replace(/[\u2063\u2064]/g, "") === "Smith, 2020", JSON.stringify(marked));
-check("the marker carries no key (a key would be visible in the deck)", marked.indexOf("smith2020") < 0);
-check(
-    "the marked span is found",
-    sandbox.markedSpans("(" + marked + ")").length === 1 && sandbox.markedSpans("(" + marked + ")")[0].text === "Smith, 2020",
-    JSON.stringify(sandbox.markedSpans("(" + marked + ")")),
-);
-check("a marked citation is present", sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "(x " + marked + ")"));
-check(
-    "an edited citation keeps its key",
-    sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "(" + sandbox.markCitationText("Smith et al., 2020") + ")"),
-);
-check(
-    "a marker left without text means the citation is gone",
-    !sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "(" + sandbox.markCitationText("") + ")"),
-);
-check("a citation that is not marked is gone", !sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "(" + sandbox.markCitationText("Doe, 2019") + ")"));
-check("a marker-free slide still uses the label", sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "(Smith, 2020)"));
-const removedMarked = sandbox.removeMarkedCitation("(" + marked + "; " + sandbox.markCitationText("Doe, 2019") + ")", "Smith, 2020");
-check(
-    "the marked citation is removed exactly",
-    removedMarked && removedMarked.text.replace(/[\u2063\u2064]/g, "") === "(Doe, 2019)",
-    JSON.stringify(removedMarked && removedMarked.text),
-);
-check("a citation that is not there is not removed", sandbox.removeMarkedCitation("(" + marked + ")", "Doe, 2019") === null);
+console.log("citations written before the markers were dropped");
 check(
     "the key an older version wrote is repaired away",
     sandbox.repairCitationText("\u2063smith2020\u2063Smith, 2020\u2064", ["smith2020"]) === "Smith, 2020",
     JSON.stringify(sandbox.repairCitationText("\u2063smith2020\u2063Smith, 2020\u2064", ["smith2020"])),
+);
+check(
+    "a polluted citation is still matched by its label",
+    sandbox.removeCitationText("\u2063smith2020\u2063Smith, 2020\u2064", "Smith, 2020").removed === true,
+);
+check(
+    "an old-format citation is recognised as present",
+    sandbox.citationTextPresent({ key: "smith2020", label: "Smith, 2020" }, "\u2063smith2020\u2063Smith, 2020\u2064"),
 );
 check(
     "citations are grouped by key with their slides",

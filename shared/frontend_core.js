@@ -6,11 +6,10 @@ const SNAPSHOT_ENDPOINT = "http://localhost:8000/snapshot";
 const DEFAULT_BIBLIOGRAPHY_STYLE = "journal-of-geophysical-research-atmospheres";
 const BIBLIOGRAPHY_STYLE_STORAGE_KEY = "zotero-ppt:bibliography-style";
 const ZOTERO_TAG_KEY = "ZOTERO_CITATION_KEYS";
-/* A written citation is wrapped in invisible marker characters, so the add-in can find exactly the
-   text it wrote instead of guessing from an author and a year. The marker carries no key: the key
-   would be visible text in the deck. */
-const CITATION_MARK_START = "\u2063";  // invisible separator
-const CITATION_MARK_END = "\u2064";    // invisible plus
+/* Invisible separator/plus characters written by an earlier version of the add-in: PowerPoint shows
+   them, so they are no longer written, but decks already carrying them are cleaned up. */
+const CITATION_MARK_START = "\u2063";
+const CITATION_MARK_END = "\u2064";
 const ZOTERO_BIBLIOGRAPHY_TAG = "ZOTERO_BIBLIOGRAPHY";
 const BIBLIOGRAPHY_TITLE = "References";
 const BIBLIOGRAPHY_CONTINUATION_TITLE = "References (cont.)";
@@ -358,24 +357,12 @@ function citationSearchAuthor(text) {
    question exactly; on older slides the author and year are looked for, so an edited label never
    drops a reference. */
 function citationTextPresent(citation, slideText) {
-  const text = String(slideText || "");
-  const label = String((citation && citation.label) || "");
-
-  // Decks written by this version carry markers around every citation, which is an exact answer:
-  // the citation is there when a marked span still says so, even if its label was edited.
-  const spans = markedSpans(text);
-  if (spans.length > 0) {
-    if (label === "") return true;
-    return spans.some((span) => {
-      const inner = stripMarkerJunk(span.text);
-      return inner === label.trim() || citationLooksLike(inner, label);
-    });
-  }
-
   // An entry without a label (written by an older version) cannot be checked against the text, so
   // it is kept rather than guessed about.
+  const label = String((citation && citation.label) || "");
   if (label === "") return true;
 
+  const text = String(slideText || "");
   const haystack = text.toLowerCase();
   const tokens = citationSearchTokens(label);
   if (tokens.author && tokens.year) {
@@ -407,50 +394,9 @@ function removeCitationText(slideText, label) {
   return { text: cleaned, removed: true };
 }
 
-/* The marked form of a citation, as it is written into the slide: invisible marker characters around
-   the text, so the citation can be found exactly later. No key goes into the text - it would show. */
-function markCitationText(text) {
-  return CITATION_MARK_START + String(text || "") + CITATION_MARK_END;
-}
-
-/* The marked citations of a shape's text, in order. */
-function markedSpans(text) {
-  const spans = [];
-  const haystack = String(text || "");
-  let index = haystack.indexOf(CITATION_MARK_START);
-  while (index >= 0) {
-    const end = haystack.indexOf(CITATION_MARK_END, index + 1);
-    if (end < 0) break;
-    spans.push({ start: index, end: end + CITATION_MARK_END.length, text: haystack.slice(index + 1, end) });
-    index = haystack.indexOf(CITATION_MARK_START, end + 1);
-  }
-  return spans;
-}
-
 /* Marker characters only. */
 function stripMarkerJunk(text) {
   return String(text || "").replace(/[\u2063\u2064]/g, "");
-}
-
-/* Are these two labels the same citation (same author, same year)? */
-function citationLooksLike(inner, label) {
-  const left = citationSearchTokens(inner);
-  const right = citationSearchTokens(label);
-  if (!left.author || !left.year) return false;
-  return left.author === right.author && left.year === right.year;
-}
-
-/* Removes the marked citation described by this label, or null when the text has no such citation. */
-function removeMarkedCitation(text, label) {
-  const haystack = String(text || "");
-  const wanted = String(label || "").trim();
-  const span = markedSpans(haystack).find((candidate) => {
-    const inner = stripMarkerJunk(candidate.text);
-    if (wanted === "") return false;
-    return inner.indexOf(wanted) >= 0 || citationLooksLike(inner, wanted);
-  });
-  if (!span) return null;
-  return { text: tidyCitationText(haystack.slice(0, span.start) + haystack.slice(span.end)), removed: true };
 }
 
 /* Removes markers and the key text an earlier version of the add-in wrote into the citation, which
@@ -880,7 +826,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
         key: item.citationKey,
         text: formatSingleCitation(item),
       }));
-      const citationsText = "(" + citationParts.map((part) => markCitationText(part.text)).join("; ") + ")";
+      const citationsText = "(" + citationParts.map((part) => part.text).join("; ") + ")";
 
       try {
         const selectedTextRange = context.presentation.getSelectedTextRange();
@@ -972,9 +918,8 @@ async function removeCitationTextFromSlide(context, slide, entry) {
     const textRange = textFrame && textFrame.textRange ? textFrame.textRange : null;
     if (!textRange || !textRange.text) continue;
 
-    const marked = removeMarkedCitation(textRange.text, entry.label || entry.key);
-    const result = marked || removeCitationText(textRange.text, entry.label || entry.key);
-    const cleaned = result.removed ? result.text : repairCitationText(textRange.text, [entry.key]);
+    const result = removeCitationText(textRange.text, entry.label || entry.key);
+    const cleaned = repairCitationText(result.removed ? result.text : textRange.text, [entry.key]);
     if (!result.removed && cleaned === textRange.text) continue;
     textRange.text = cleaned;
     await context.sync();
