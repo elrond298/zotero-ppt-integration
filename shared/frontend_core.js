@@ -108,7 +108,9 @@ Office.onReady((info) => {
     const allCitationsElement = document.getElementById("all-citations");
     if (allCitationsElement) {
       allCitationsElement.addEventListener("click", handleJumpClick);
-      displayAllCitations();
+      // PowerPoint's slide collection can still be empty while the pane is wiring itself up, so the
+      // first scan of the whole deck waits a moment; edits refresh it right away afterwards.
+      window.setTimeout(displayAllCitations, 1500);
     }
     const splitBibliographyInput = document.getElementById("split-bibliography");
     if (splitBibliographyInput instanceof HTMLInputElement) {
@@ -349,13 +351,21 @@ async function collectCitationsFromSlides() {
     }
     await context.sync();
 
+    let taggedSlides = 0;
+    let sampleTag = "";
     slides.items.forEach((slide, index) => {
       const zoteroTag = slide.tags.items.find((tag) => tag.key === ZOTERO_TAG_KEY);
       if (!zoteroTag) return;
+      taggedSlides += 1;
+      if (!sampleTag) sampleTag = String(zoteroTag.value).slice(0, 120);
       parseCitationTag(zoteroTag.value).forEach((entry) => {
         citations.push({ key: entry.key, label: entry.label, slideNumber: index + 1 });
       });
     });
+    reportToHelper(
+      "citation scan: slides=" + slides.items.length + " tagged=" + taggedSlides +
+        " citations=" + citations.length + " sample=" + sampleTag,
+    );
   });
 
   return citations;
@@ -483,6 +493,7 @@ async function displayAllCitations() {
     container.replaceChildren(list);
   } catch (error) {
     logWarn("Could not list the citations of this presentation", error);
+    reportToHelper("listing all citations failed" + describeError(error));
     container.textContent = "Could not read the citations of this presentation.";
   }
 }
@@ -746,6 +757,7 @@ async function insertCitationsIntoPowerPoint(zoteroItems) {
     });
 
     await displayCitationsFromSlide();
+    displayAllCitations();
   } catch (error) {
     logError("Error interacting with PowerPoint:", error);
     document.getElementById("output").textContent = "Error: Could not insert citations.";
@@ -772,6 +784,7 @@ async function removeCitation(keyToRemove) {
     });
 
     await displayCitationsFromSlide();
+    displayAllCitations();
   } catch (error) {
     logError("Error removing citation:", error);
     document.getElementById("output").textContent = "Error: Could not remove citation.";
